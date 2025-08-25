@@ -2,9 +2,23 @@ body { background: #f8f9fa; }
 .navbar .navbar-brand span { font-weight: 600; }
 .card h6 { font-weight: 600; letter-spacing: .03em; }
 .table td, .table th { vertical-align: middle; }
+img { max-width: 100%; height: auto; }
 
 /* Make table rows clickable */
 tr.row-click { cursor: pointer; }
 
 /* Align status action controls */
 .status-actions .form-control { height: 38px; }
+.status-actions form { margin: 0; }
+
+/* Prevent long text overflow */
+.fw-semibold { word-break: break-word; }
+.card-body p { white-space: pre-wrap; word-break: break-word; }
+
+/* Mobile tweaks */
+@media (max-width: 576px) {
+  .status-actions { gap: .5rem; width: 100%; }
+  .status-actions form { flex: 1 1 100%; }
+  .status-actions .btn { width: 100%; }
+  .navbar .container { padding-left: 12px; padding-right: 12px; }
+}

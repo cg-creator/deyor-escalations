@@ -416,6 +416,23 @@ def update_status(ticket_id: int):
     return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
 
+@app.route('/tickets/<int:ticket_id>/delete', methods=['POST'])
+@login_required
+def delete_ticket(ticket_id: int):
+    if not admin_required():
+        return redirect(url_for('list_tickets'))
+    t = Ticket.query.get_or_404(ticket_id)
+    # Clean up association rows to avoid orphans
+    try:
+        db.session.execute(text("DELETE FROM ticket_assignees WHERE ticket_id = :tid"), {"tid": t.id})
+    except Exception as e:
+        print(f"[warn] failed to clean ticket_assignees for ticket {t.id}: {e}")
+    db.session.delete(t)
+    db.session.commit()
+    flash('Ticket deleted.', 'success')
+    return redirect(url_for('list_tickets'))
+
+
 def notify_resolved(ticket: Ticket) -> None:
     # Recipients: assigned users + all admins only
     recipients = set()

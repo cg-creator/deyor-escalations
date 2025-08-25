@@ -2,7 +2,7 @@
 {% block content %}
   <div class="d-flex align-items-center mb-2">
     <h4 class="me-auto mb-0">#{{ t.id }} · {{ t.subject }}</h4>
-    <div class="d-flex gap-2 align-items-center status-actions">
+    <div class="d-flex gap-2 align-items-center status-actions flex-wrap">
       {% if t.status == 'Open' %}
         <form method="post" action="{{ url_for('update_status', ticket_id=t.id) }}">
           <input type="hidden" name="status" value="In Progress">
@@ -27,6 +27,12 @@
         </form>
       {% else %}
         <span class="badge bg-success align-self-center">Resolved</span>
+      {% endif %}
+
+      {% if current_user.role == 'admin' %}
+        <form method="post" action="{{ url_for('delete_ticket', ticket_id=t.id) }}" onsubmit="return confirm('Delete ticket #{{ t.id }} permanently? This cannot be undone.');">
+          <button class="btn btn-outline-danger" type="submit">Delete</button>
+        </form>
       {% endif %}
     </div>
   </div>
