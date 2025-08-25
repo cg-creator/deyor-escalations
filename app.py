@@ -417,22 +417,19 @@ def update_status(ticket_id: int):
 
 
 def notify_resolved(ticket: Ticket) -> None:
-    # Recipients: per-ticket field, team defaults, assigned_to (legacy), assignees emails
-    recipients = set(parse_emails(ticket.notify_emails))
-    recipients.update(get_team_default_emails(ticket.team))
+    # Recipients: assigned users + all admins only
+    recipients = set()
+    # Include legacy single assignee if present
     if ticket.assigned_to and '@' in ticket.assigned_to:
         recipients.add(ticket.assigned_to.strip())
     for u in ticket.assignees:
         if u.email:
             recipients.add(u.email)
-
-    founders_cc = [f.email for f in Founder.query.all() if f.email]
-    # Fallback: if nothing else, use global NOTIFY_EMAILS
-    # Always include founders as part of recipients (hidden BCC behavior)
-    recipients.update(founders_cc)
+    # Include all admins
+    admin_emails = [u.email for u in User.query.filter_by(role='admin').all() if u.email]
+    recipients.update(admin_emails)
     if not recipients:
-        recipients = set(parse_emails(os.getenv('NOTIFY_EMAILS', '')))
-    if not recipients and not founders_cc:
+        print("[info] notify_resolved: no recipients; skipping send")
         return  # notifications disabled entirely
 
     smtp_host = os.getenv('SMTP_HOST')
@@ -440,6 +437,7 @@ def notify_resolved(ticket: Ticket) -> None:
     smtp_user = os.getenv('SMTP_USER')
     smtp_pass = os.getenv('SMTP_PASS')
     if not smtp_host or not smtp_user or not smtp_pass:
+        print("[info] notify_resolved: SMTP config incomplete; skipping send")
         return
 
     subject = f"Ticket #{ticket.id} resolved: {ticket.subject}"
@@ -485,27 +483,27 @@ def get_team_default_emails(team: str) -> list[str]:
 
 
 def notify_created(ticket: Ticket) -> None:
-    # Recipients: per-ticket field (legacy), team defaults, assigned_to (legacy), assignees emails
-    recipients = set(parse_emails(ticket.notify_emails))
-    recipients.update(get_team_default_emails(ticket.team))
+    # Recipients: assigned users + all admins only
+    recipients = set()
+    # Include legacy single assignee if present
     if ticket.assigned_to and '@' in ticket.assigned_to:
         recipients.add(ticket.assigned_to.strip())
     for u in ticket.assignees:
         if u.email:
             recipients.add(u.email)
-
-    # CC founders on every creation
-    founders_cc = [f.email for f in Founder.query.all() if f.email]
-    # Always include founders as part of recipients (hidden BCC behavior)
-    recipients.update(founders_cc)
+    # Include all admins
+    admin_emails = [u.email for u in User.query.filter_by(role='admin').all() if u.email]
+    recipients.update(admin_emails)
     if not recipients:
-        recipients = set(parse_emails(os.getenv('NOTIFY_EMAILS', '')))
+        print("[info] notify_created: no recipients; skipping send")
+        return
 
     smtp_host = os.getenv('SMTP_HOST')
     smtp_port = int(os.getenv('SMTP_PORT', '587'))
     smtp_user = os.getenv('SMTP_USER')
     smtp_pass = os.getenv('SMTP_PASS')
     if not smtp_host or not smtp_user or not smtp_pass:
+        print("[info] notify_created: SMTP config incomplete; skipping send")
         return
 
     subject = f"New Ticket #{ticket.id}: {ticket.subject}"
