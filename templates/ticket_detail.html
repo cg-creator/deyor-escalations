@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="d-flex align-items-center mb-2">
+    <h4 class="me-auto mb-0">#{{ t.id }} · {{ t.subject }}</h4>
+    <div class="d-flex gap-2 align-items-center status-actions">
+      {% if t.status == 'Open' %}
+        <form method="post" action="{{ url_for('update_status', ticket_id=t.id) }}">
+          <input type="hidden" name="status" value="In Progress">
+          <button class="btn btn-warning" type="submit">Start Progress</button>
+        </form>
+      {% elif t.status == 'In Progress' %}
+        <form method="post" action="{{ url_for('update_status', ticket_id=t.id) }}">
+          <input type="hidden" name="status" value="Open">
+          <button class="btn btn-outline-secondary" type="submit">Reopen</button>
+        </form>
+      {% elif t.status == 'Resolved' %}
+        <form method="post" action="{{ url_for('update_status', ticket_id=t.id) }}">
+          <input type="hidden" name="status" value="Open">
+          <button class="btn btn-outline-secondary" type="submit">Reopen</button>
+        </form>
+      {% endif %}
+
+      {% if t.status != 'Resolved' %}
+        <form method="post" action="{{ url_for('update_status', ticket_id=t.id) }}" class="d-flex gap-2 align-items-center">
+          <input type="hidden" name="status" value="Resolved">
+          <input type="text" name="actor" class="form-control" placeholder="Your name (optional)" style="max-width: 220px;">
+          <button class="btn btn-success" type="submit">Mark Resolved</button>
+        </form>
+      {% else %}
+        <span class="badge bg-success align-self-center">Resolved</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="text-uppercase text-muted">Details</h6>
+          <p style="white-space: pre-wrap;">{{ t.description }}</p>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-body">
+          <h6 class="text-uppercase text-muted mb-3">Comments</h6>
+          <form method="post" action="{{ url_for('add_comment', ticket_id=t.id) }}" class="mb-3">
+            <div class="row g-2">
+              <div class="col-md-10">
+                <input type="text" name="body" class="form-control" placeholder="Add a comment">
+              </div>
+              <div class="col-md-2">
+                <button class="btn btn-outline-primary w-100" type="submit">Add</button>
+              </div>
+            </div>
+          </form>
+          {% for c in t.comments|sort(attribute='created_at') %}
+            <div class="border-top py-2">
+              <div class="small text-muted">{{ c.author or 'Anonymous' }} · {{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+              <div>{{ c.body }}</div>
+            </div>
+          {% else %}
+            <div class="text-muted">No comments yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="text-uppercase text-muted">Meta</h6>
+          <div class="mb-2"><strong>Status:</strong> {{ t.status }}</div>
+          <div class="mb-2"><strong>Team:</strong> {{ t.team }}</div>
+          <div class="mb-2"><strong>Priority:</strong> {{ t.priority }}</div>
+          <div class="mb-2"><strong>Source:</strong> {{ t.source or '—' }}</div>
+          <div class="mb-2"><strong>Customer:</strong> {{ t.customer_name or '—' }}</div>
+          <div class="mb-2"><strong>Contact:</strong> {{ t.contact or '—' }}</div>
+          <div class="mb-2"><strong>Booking/Trip ID:</strong> {{ t.booking_id or '—' }}</div>
+          <div class="mb-2"><strong>Assignees:</strong> {{ (t.assignees | map(attribute='name') | list | join(', ')) or (t.assigned_to or '—') }}</div>
+          <div class="mb-2"><strong>Notify emails:</strong> {{ t.notify_emails or '—' }}</div>
+          <div class="mb-2"><strong>Created:</strong> {{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+          {% if t.resolved_at %}
+            <div class="mb-2"><strong>Resolved:</strong> {{ t.resolved_at.strftime('%Y-%m-%d %H:%M') }} by {{ t.resolved_by or '—' }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

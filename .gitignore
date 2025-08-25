@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Flask / DB
+instance/
+*.db
+*.sqlite3
+
+# Environment files (DO NOT COMMIT SECRETS)
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Build / cache
+.cache/
+dist/
+build/

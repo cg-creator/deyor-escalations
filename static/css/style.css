@@ -1,0 +1,10 @@
+body { background: #f8f9fa; }
+.navbar .navbar-brand span { font-weight: 600; }
+.card h6 { font-weight: 600; letter-spacing: .03em; }
+.table td, .table th { vertical-align: middle; }
+
+/* Make table rows clickable */
+tr.row-click { cursor: pointer; }
+
+/* Align status action controls */
+.status-actions .form-control { height: 38px; }

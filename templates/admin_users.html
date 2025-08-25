@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="d-flex align-items-center mb-3">
+    <h4 class="me-auto mb-0">Team Members</h4>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="text-uppercase text-muted mb-2">Existing Members</h6>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Department</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for u in users %}
+                  <tr>
+                    <td>{{ u.name }}</td>
+                    <td>{{ u.email }}</td>
+                    <td><span class="badge bg-{{ 'dark' if u.role=='admin' else 'secondary' }}">{{ u.role }}</span></td>
+                    <td>{{ u.department or '—' }}</td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="4" class="text-muted text-center">No users yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="text-uppercase text-muted mb-3">Add Member</h6>
+          <form method="post">
+            <div class="mb-2">
+              <label class="form-label">Name</label>
+              <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Email</label>
+              <input type="email" name="email" class="form-control" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Password</label>
+              <input type="text" name="password" class="form-control" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Role</label>
+              <select name="role" class="form-select">
+                <option value="agent">Agent</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Department</label>
+              <select name="department" class="form-select">
+                <option value="">—</option>
+                {% for t in TEAMS %}
+                  <option value="{{ t }}">{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="d-flex justify-content-end">
+              <button class="btn btn-primary" type="submit">Add</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

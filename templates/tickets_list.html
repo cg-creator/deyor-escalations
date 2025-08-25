@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="d-flex align-items-center mb-3">
+    <h4 class="me-auto mb-0">Tickets</h4>
+    <a href="{{ url_for('new_ticket') }}" class="btn btn-primary">+ New</a>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body p-2">
+          <div class="text-muted small">Total</div>
+          <div class="h5 mb-0">{{ total_count }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body p-2">
+          <div class="text-muted small">Open</div>
+          <div class="h5 mb-0">{{ open_count }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body p-2">
+          <div class="text-muted small">In Progress</div>
+          <div class="h5 mb-0">{{ inprog_count }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body p-2">
+          <div class="text-muted small">Resolved</div>
+          <div class="h5 mb-0">{{ resolved_count }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-md-3">
+      <label class="form-label">Team</label>
+      <select class="form-select" name="team">
+        <option value="">All</option>
+        {% for t in TEAMS %}
+          <option value="{{ t }}" {% if current_team==t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Status</label>
+      <select class="form-select" name="status">
+        <option value="">All</option>
+        {% for s in STATUSES %}
+          <option value="{{ s }}" {% if current_status==s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Date Range</label>
+      <select class="form-select" name="date_range" id="dateRangeSelect">
+        <option value="">All time</option>
+        <option value="today" {% if current_date_range=='today' %}selected{% endif %}>Today</option>
+        <option value="yesterday" {% if current_date_range=='yesterday' %}selected{% endif %}>Yesterday</option>
+        <option value="last7" {% if current_date_range=='last7' %}selected{% endif %}>Last 7 days</option>
+        <option value="this_month" {% if current_date_range=='this_month' %}selected{% endif %}>This month</option>
+        <option value="last_month" {% if current_date_range=='last_month' %}selected{% endif %}>Last month</option>
+        <option value="custom" {% if current_date_range=='custom' %}selected{% endif %}>Custom…</option>
+      </select>
+    </div>
+    <div class="col-md-3 d-none" id="customDateWrap">
+      <label class="form-label">Custom dates</label>
+      <div class="d-flex gap-2">
+        <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
+        <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Search</label>
+      <input class="form-control" type="text" name="q" value="{{ q }}" placeholder="Subject, customer, contact, booking…">
+    </div>
+    <div class="col-md-12 col-lg-2">
+      <button class="btn btn-secondary w-100" type="submit">Filter</button>
+    </div>
+  </form>
+
+  <script>
+    (function() {
+      const sel = document.getElementById('dateRangeSelect');
+      const wrap = document.getElementById('customDateWrap');
+      function toggleCustom() {
+        if (!sel) return;
+        const show = sel.value === 'custom';
+        wrap.classList.toggle('d-none', !show);
+      }
+      if (sel) {
+        sel.addEventListener('change', toggleCustom);
+        toggleCustom();
+      }
+    })();
+  </script>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Booking ID</th>
+          <th>Team</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tickets %}
+          <tr class="row-click" data-href="{{ url_for('ticket_detail', ticket_id=t.id) }}">
+            <td>#{{ t.id }}</td>
+            <td>
+              <div class="fw-semibold">{{ t.subject }}</div>
+              <div class="text-muted small">{{ t.customer_name }} {{ t.contact and ('· ' + t.contact) or '' }} {{ t.booking_id and ('· ' + t.booking_id) or '' }}</div>
+            </td>
+            <td>{{ t.team }}</td>
+            <td>
+              <span class="badge bg-{{ 'danger' if t.priority in ['High','Urgent'] else 'secondary' }}">{{ t.priority }}</span>
+            </td>
+            <td>
+              {% if t.status == 'Resolved' %}
+                <span class="badge bg-success">Resolved</span>
+              {% elif t.status == 'In Progress' %}
+                <span class="badge bg-warning text-dark">In Progress</span>
+              {% else %}
+                <span class="badge bg-primary">Open</span>
+              {% endif %}
+            </td>
+            <td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="text-center text-muted">No tickets found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

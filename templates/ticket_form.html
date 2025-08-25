@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h4 class="mb-3">Create Ticket</h4>
+  <form method="post">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Booking ID *</label>
+        <input type="text" class="form-control" name="booking_id" required placeholder="e.g. DY12345">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Escalation Details *</label>
+        <textarea class="form-control" name="description" rows="6" required placeholder="Paste the escalation here…"></textarea>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Team</label>
+        <select class="form-select" name="team" id="teamSelect">
+          {% for t in TEAMS %}
+            <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Priority</label>
+        <select class="form-select" name="priority">
+          {% for p in PRIORITIES %}
+            <option value="{{ p }}" {% if p=='Medium' %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Source</label>
+        <select class="form-select" name="source">
+          <option value="">—</option>
+          <option>Gmail</option>
+          <option>LinkedIn</option>
+          <option>WhatsApp</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Customer Name</label>
+        <input type="text" class="form-control" name="customer_name">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Contact (email/phone)</label>
+        <input type="text" class="form-control" name="contact">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Assign to team member(s)</label>
+        <div class="dropdown w-100">
+          <button class="btn btn-outline-secondary w-100 text-start d-flex justify-content-between align-items-center" type="button" id="assigneesDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+            <span id="assigneesDropdownLabel">Select team members</span>
+            <span class="ms-2 badge bg-secondary" id="assigneeCount" style="display:none">0</span>
+          </button>
+          <div class="dropdown-menu w-100 p-2" aria-labelledby="assigneesDropdownBtn" style="max-height: 240px; overflow:auto;">
+            {% for a in agents %}
+              <label class="dropdown-item d-flex align-items-center gap-2" data-dept="{{ a.department or '' }}">
+                <input class="form-check-input" type="checkbox" name="assignees" value="{{ a.id }}">
+                <span>{{ a.name }} — {{ a.department or 'Unassigned' }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="form-text">Open the dropdown and tick multiple team members.</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Notify emails (comma-separated)</label>
+        <input type="text" class="form-control" name="notify_emails" placeholder="ops@deyor, lead@deyor">
+        <div class="form-text">These recipients will get an email immediately when the ticket is created.</div>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Create</button>
+        <a href="{{ url_for('list_tickets') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </div>
+  </form>
+  <script>
+    (function() {
+      // Query from document to avoid scope issues when script is outside the form
+      const checks = document.querySelectorAll('input[name="assignees"]');
+      const items = document.querySelectorAll('label.dropdown-item');
+      const label = document.getElementById('assigneesDropdownLabel');
+      const badge = document.getElementById('assigneeCount');
+      const teamSel = document.getElementById('teamSelect');
+
+      function refresh() {
+        const selected = Array.from(checks).filter(c => c.checked);
+        const count = selected.length;
+        if (count === 0) {
+          label.textContent = 'Select team members';
+          badge.style.display = 'none';
+        } else {
+          label.textContent = selected.slice(0,2).map(c => c.nextElementSibling.textContent.trim()).join(', ') + (count > 2 ? ` +${count-2}` : '');
+          badge.textContent = count;
+          badge.style.display = '';
+        }
+      }
+
+      function filterByTeam() {
+        const team = (teamSel && teamSel.value) || '';
+        items.forEach(it => {
+          const dept = (it.getAttribute('data-dept') || '').trim();
+          const match = dept && dept.toLowerCase() === team.toLowerCase();
+          // Hide non-matching departments
+          it.style.display = match ? '' : 'none';
+          if (!match) {
+            const chk = it.querySelector('input[type="checkbox"]');
+            if (chk && chk.checked) {
+              chk.checked = false;
+            }
+          }
+        });
+        refresh();
+      }
+
+      checks.forEach(c => c.addEventListener('change', refresh));
+      if (teamSel) {
+        teamSel.addEventListener('change', filterByTeam);
+        // Initial filter on load
+        filterByTeam();
+      }
+      refresh();
+    })();
+  </script>
+{% endblock %}
