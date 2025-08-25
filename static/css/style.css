@@ -1,5 +1,6 @@
 body { background: #f8f9fa; }
 .navbar .navbar-brand span { font-weight: 600; }
+.navbar .navbar-brand img { height: 28px; width: auto; }
 .card h6 { font-weight: 600; letter-spacing: .03em; }
 .table td, .table th { vertical-align: middle; }
 img { max-width: 100%; height: auto; }
