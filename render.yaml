@@ -3,12 +3,13 @@
 
 databases:
   - name: deyor-escalations-db
-    plan: starter
+    # Updated to new flexible Postgres plan naming
+    plan: basic-256mb
 
 services:
   - type: web
     name: deyor-escalations
-    env: python
+    runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
