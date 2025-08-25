@@ -40,6 +40,25 @@
     </div>
   </div>
 
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body p-2">
+          <div class="text-muted small">% Closed</div>
+          <div class="h5 mb-0">{{ closed_pct is not none and (closed_pct|string + '%') or '—' }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center">
+        <div class="card-body p-2">
+          <div class="text-muted small">Avg Time to Close</div>
+          <div class="h5 mb-0">{{ avg_close_time }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <form method="get" class="row g-2 align-items-end mb-3">
     <div class="col-md-3">
       <label class="form-label">Team</label>

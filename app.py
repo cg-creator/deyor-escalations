@@ -247,8 +247,42 @@ def list_tickets():
     inprog_count = query.filter(Ticket.status == 'In Progress').count()
     resolved_count = query.filter(Ticket.status == 'Resolved').count()
 
+    # Derived metrics
+    closed_pct = None
+    if total_count > 0:
+        try:
+            closed_pct = round((resolved_count / total_count) * 100)
+        except Exception:
+            closed_pct = None
+
+    # Average time to close among resolved tickets within the filtered query
+    avg_close_human = '—'
+    try:
+        resolved_tickets = query.filter(Ticket.status == 'Resolved', Ticket.resolved_at.isnot(None)).all()
+        deltas = [
+            (t.resolved_at - t.created_at).total_seconds()
+            for t in resolved_tickets
+            if t.resolved_at and t.created_at and t.resolved_at >= t.created_at
+        ]
+        if deltas:
+            avg_sec = sum(deltas) / len(deltas)
+            minutes = int(avg_sec // 60)
+            if minutes < 60:
+                avg_close_human = f"{minutes}m"
+            else:
+                hours = minutes // 60
+                minutes = minutes % 60
+                if hours < 24:
+                    avg_close_human = f"{hours}h {minutes}m"
+                else:
+                    days = hours // 24
+                    hours = hours % 24
+                    avg_close_human = f"{days}d {hours}h"
+    except Exception:
+        avg_close_human = '—'
+
     tickets = query.order_by(Ticket.created_at.desc()).all()
-    return render_template('tickets_list.html', tickets=tickets, TEAMS=TEAMS, PRIORITIES=PRIORITIES, STATUSES=STATUSES, current_team=team, current_status=status, q=q, total_count=total_count, open_count=open_count, inprog_count=inprog_count, resolved_count=resolved_count, current_date_range=date_range, start_date=start_date, end_date=end_date)
+    return render_template('tickets_list.html', tickets=tickets, TEAMS=TEAMS, PRIORITIES=PRIORITIES, STATUSES=STATUSES, current_team=team, current_status=status, q=q, total_count=total_count, open_count=open_count, inprog_count=inprog_count, resolved_count=resolved_count, closed_pct=closed_pct, avg_close_time=avg_close_human, current_date_range=date_range, start_date=start_date, end_date=end_date)
 
 
 @app.route('/tickets/new', methods=['GET', 'POST'])
@@ -325,13 +359,14 @@ def add_comment(ticket_id: int):
     if not body:
         flash('Comment cannot be empty.', 'danger')
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
-
     author = getattr(current_user, 'name', None)
     c = Comment(ticket_id=t.id, author=author or None, body=body)
     db.session.add(c)
     db.session.commit()
     flash('Comment added.', 'success')
     return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+ 
 
 
 @app.route('/tickets/<int:ticket_id>/resolve', methods=['POST'])
@@ -341,7 +376,7 @@ def resolve_ticket(ticket_id: int):
     if t.status != 'Resolved':
         t.status = 'Resolved'
         t.resolved_at = datetime.utcnow()
-        t.resolved_by = request.form.get('resolved_by', '').strip() or None
+        t.resolved_by = getattr(current_user, 'name', None)
         db.session.commit()
         try:
             notify_resolved(t)
@@ -357,7 +392,7 @@ def resolve_ticket(ticket_id: int):
 def update_status(ticket_id: int):
     t = Ticket.query.get_or_404(ticket_id)
     new_status = request.form.get('status', '').strip()
-    actor = request.form.get('actor', '').strip() or None
+    actor = getattr(current_user, 'name', None)
     if new_status not in STATUSES:
         flash('Invalid status.', 'danger')
         return redirect(url_for('ticket_detail', ticket_id=ticket_id))
@@ -536,6 +571,29 @@ def admin_users():
     return render_template('admin_users.html', users=users, TEAMS=TEAMS)
 
 
+@app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+@login_required
+def delete_user(user_id: int):
+    if not admin_required():
+        return redirect(url_for('list_tickets'))
+    u = User.query.get_or_404(user_id)
+    if u.id == current_user.id:
+        flash("You can't delete your own account.", 'danger')
+        return redirect(url_for('admin_users'))
+    if u.role == 'admin' and User.query.filter_by(role='admin').count() <= 1:
+        flash("Can't delete the last admin.", 'danger')
+        return redirect(url_for('admin_users'))
+    # Detach from any assigned tickets and clean association rows
+    try:
+        db.session.execute(text("DELETE FROM ticket_assignees WHERE user_id = :uid"), {'uid': u.id})
+    except Exception as e:
+        print(f"[warn] failed to clean ticket_assignees for user {u.id}: {e}")
+    db.session.delete(u)
+    db.session.commit()
+    flash('User deleted.', 'success')
+    return redirect(url_for('admin_users'))
+
+
 @app.route('/admin/founders', methods=['GET', 'POST'])
 @login_required
 def admin_founders():
@@ -576,6 +634,21 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+
+# Health and readiness endpoints for Render
+@app.route('/health')
+def health():
+    return {'status': 'ok'}
+
+
+@app.route('/ready')
+def ready():
+    try:
+        db.session.execute(text('SELECT 1'))
+        return {'status': 'ready'}
+    except Exception:
+        return {'status': 'degraded'}, 503
 
 
 if __name__ == '__main__':

@@ -23,7 +23,6 @@
       {% if t.status != 'Resolved' %}
         <form method="post" action="{{ url_for('update_status', ticket_id=t.id) }}" class="d-flex gap-2 align-items-center">
           <input type="hidden" name="status" value="Resolved">
-          <input type="text" name="actor" class="form-control" placeholder="Your name (optional)" style="max-width: 220px;">
           <button class="btn btn-success" type="submit">Mark Resolved</button>
         </form>
       {% else %}
