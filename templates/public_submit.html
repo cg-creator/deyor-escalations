@@ -56,7 +56,7 @@
                   <textarea id="concerns" name="concerns" class="form-control airbnb-input" rows="6" placeholder="Describe your issue or request"></textarea>
                   <div class="invalid-feedback">Describe your concern or enter a destination above.</div>
                 </div>
-                {% if CAPTCHA_PROVIDER and CAPTCHA_SITE_KEY %}
+                {% if CAPTCHA_PROVIDER and CAPTCHA_SITE_KEY and CAPTCHA_SECRET %}
                 <div class="col-12">
                   {% if CAPTCHA_PROVIDER == 'turnstile' %}
                     <div class="cf-turnstile" data-sitekey="{{ CAPTCHA_SITE_KEY }}"></div>
@@ -127,11 +127,11 @@
       });
     })();
   </script>
-  {% if CAPTCHA_PROVIDER and CAPTCHA_SITE_KEY %}
+  {% if CAPTCHA_PROVIDER and CAPTCHA_SITE_KEY and CAPTCHA_SECRET %}
     {% if CAPTCHA_PROVIDER == 'turnstile' %}
       <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     {% elif CAPTCHA_PROVIDER == 'hcaptcha' %}
-      <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+      <script src="https://hcaptcha.com/1/api.js" async defer></script>
     {% endif %}
   {% endif %}
 {% endblock %}

@@ -972,7 +972,7 @@ def public_submit():
 
         return render_template('public_thanks.html', ticket=t)
 
-    return render_template('public_submit.html', CAPTCHA_PROVIDER=provider, CAPTCHA_SITE_KEY=site_key)
+    return render_template('public_submit.html', CAPTCHA_PROVIDER=provider, CAPTCHA_SITE_KEY=site_key, CAPTCHA_SECRET=secret)
 
 
 if __name__ == '__main__':
