@@ -3,7 +3,9 @@ from datetime import datetime, timedelta
 import smtplib
 import ssl
 import certifi
+import re
 from email.mime.text import MIMEText
+import requests
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
@@ -167,6 +169,13 @@ def load_user(user_id):
 
 @app.route('/')
 def index():
+    # If served on support.deyor.in, land users directly on the public submit form
+    try:
+        host = (request.host or '').lower()
+    except Exception:
+        host = ''
+    if 'support.deyor.in' in host:
+        return redirect(url_for('public_submit'))
     return redirect(url_for('list_tickets'))
 
 
@@ -331,6 +340,13 @@ def new_ticket():
             notify_created(t)
         except Exception as e:
             print(f"[warn] Failed to send creation notification: {e}")
+        # Send customer confirmation if email provided or derivable from contact
+        try:
+            cust_email = extract_email_from_contact(contact)
+            if cust_email:
+                notify_customer_created(t, cust_email)
+        except Exception as e:
+            print(f"[warn] Failed to send customer creation email: {e}")
         flash(f'Ticket #{t.id} created.', 'success')
         return redirect(url_for('ticket_detail', ticket_id=t.id))
 
@@ -383,6 +399,13 @@ def resolve_ticket(ticket_id: int):
         except Exception as e:
             # Do not block resolution on email errors
             print(f"[warn] Failed to send notification: {e}")
+        # Notify customer if we have an email
+        try:
+            cust_email = extract_email_from_contact(t.contact)
+            if cust_email:
+                notify_customer_resolved(t, cust_email)
+        except Exception as e:
+            print(f"[warn] Failed to send customer resolution email: {e}")
         flash('Ticket marked as resolved.', 'success')
     return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -406,6 +429,13 @@ def update_status(ticket_id: int):
             notify_resolved(t)
         except Exception as e:
             print(f"[warn] Failed to send notification: {e}")
+        # Notify customer if we have an email
+        try:
+            cust_email = extract_email_from_contact(t.contact)
+            if cust_email:
+                notify_customer_resolved(t, cust_email)
+        except Exception as e:
+            print(f"[warn] Failed to send customer resolution email: {e}")
         flash('Ticket marked as resolved.', 'success')
     else:
         # Clear resolution metadata when reopening or moving to in-progress
@@ -485,10 +515,93 @@ def notify_resolved(ticket: Ticket) -> None:
             server.send_message(msg, from_addr=smtp_user, to_addrs=sorted(recipients))
 
 
+def notify_customer_created(ticket: Ticket, to_email: str) -> None:
+    """Send a confirmation email to the end-customer after ticket creation."""
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_pass = os.getenv('SMTP_PASS')
+    if not smtp_host or not smtp_user or not smtp_pass:
+        print("[info] notify_customer_created: SMTP config incomplete; skipping send")
+        return
+
+    subject = f"Your Deyor ticket #{ticket.id} has been created"
+    body = (
+        f"Hello{(' ' + ticket.customer_name) if ticket.customer_name else ''},\n\n"
+        f"Thanks for reaching out. Your ticket has been created and sent to our {ticket.team} team.\n\n"
+        f"Ticket ID: {ticket.id}\n"
+        f"Subject: {ticket.subject}\n"
+        f"Team: {ticket.team}\n"
+        f"Priority: {ticket.priority}\n"
+        f"Created: {ticket.created_at}\n\n"
+        f"--- Details you submitted ---\n{ticket.description}\n\n"
+        f"We’ll update you as soon as possible.\n"
+    )
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = smtp_user
+    msg['To'] = to_email
+
+    context = ssl.create_default_context(cafile=certifi.where())
+    if smtp_port == 465:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context) as server:
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg, from_addr=smtp_user, to_addrs=[to_email])
+    else:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls(context=context)
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg, from_addr=smtp_user, to_addrs=[to_email])
+
+
+def notify_customer_resolved(ticket: Ticket, to_email: str) -> None:
+    """Send a resolution email to the end-customer when ticket is resolved."""
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_pass = os.getenv('SMTP_PASS')
+    if not smtp_host or not smtp_user or not smtp_pass:
+        print("[info] notify_customer_resolved: SMTP config incomplete; skipping send")
+        return
+
+    subject = f"Your Deyor ticket #{ticket.id} has been resolved"
+    body = (
+        f"Hello{(' ' + ticket.customer_name) if ticket.customer_name else ''},\n\n"
+        f"We’re writing to let you know your ticket has been marked resolved.\n\n"
+        f"Ticket ID: {ticket.id}\n"
+        f"Subject: {ticket.subject}\n"
+        f"Team: {ticket.team}\n"
+        f"Resolved by: {ticket.resolved_by or 'Team'} at {ticket.resolved_at}\n\n"
+        f"If this doesn’t address your concern, just reply to this email and we’ll reopen it.\n"
+    )
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = smtp_user
+    msg['To'] = to_email
+
+    context = ssl.create_default_context(cafile=certifi.where())
+    if smtp_port == 465:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context) as server:
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg, from_addr=smtp_user, to_addrs=[to_email])
+    else:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls(context=context)
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg, from_addr=smtp_user, to_addrs=[to_email])
+
 def parse_emails(raw: str | None) -> list[str]:
     if not raw:
         return []
     return [e.strip() for e in raw.split(',') if e.strip()]
+
+
+def extract_email_from_contact(contact: str | None) -> str | None:
+    """Best-effort extraction of a single email from a free-form contact string."""
+    if not contact:
+        return None
+    m = re.search(r'([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})', contact)
+    return m.group(1) if m else None
 
 
 def get_team_default_emails(team: str) -> list[str]:
@@ -664,6 +777,177 @@ def ready():
         return {'status': 'ready'}
     except Exception:
         return {'status': 'degraded'}, 503
+
+
+# -------- Public submission + auto-assignment helpers --------
+INTERNATIONAL_KEYWORDS = {
+    # Countries/regions and popular cities (non-exhaustive)
+    'maldives', 'bali', 'indonesia', 'vietnam', 'thailand', 'dubai', 'uae', 'united arab emirates',
+    'malaysia', 'sri lanka', 'srilanka', 'singapore', 'turkey', 'istanbul', 'antalya', 'georgia',
+    'tbilisi', 'azerbaijan', 'baku', 'armenia', 'almaty', 'kazakhstan', 'mauritius', 'seychelles',
+    'phuket', 'krabi', 'bangkok', 'pattaya', 'hanoi', 'da nang', 'danang', 'ho chi minh', 'saigon',
+    'hoi an', 'kuala lumpur', 'langkawi', 'colombo', 'bentota', 'negombo', 'male', 'maafushi',
+    'phu quoc', 'doha', 'qatar', 'oman', 'muscat', 'jordan', 'amman', 'egypt', 'cairo', 'sharm',
+}
+
+DOMESTIC_KEYWORDS = {
+    # India markers
+    'india', 'indian', '+91',
+    # States/UTs
+    'ladakh', 'jammu', 'kashmir', 'jk', 'himachal', 'uttarakhand', 'punjab', 'haryana', 'rajasthan',
+    'gujarat', 'maharashtra', 'goa', 'karnataka', 'kerala', 'tamil nadu', 'andhra pradesh',
+    'telangana', 'odisha', 'chhattisgarh', 'madhya pradesh', 'bihar', 'jharkhand', 'west bengal',
+    'sikkim', 'assam', 'meghalaya', 'arunachal', 'nagaland', 'manipur', 'mizoram', 'tripura',
+    'andaman', 'nicobar', 'puducherry', 'pondicherry', 'delhi', 'ncr',
+    # Popular domestic destinations & localities
+    'manali', 'shimla', 'kasol', 'spiti', 'kaza', 'kibber', 'kinnaur', 'sangla', 'kalpa', 'jibhi',
+    'tirthan', 'rishikesh', 'haridwar', 'nainital', 'mussoorie', 'auli', 'kasauli', 'dharamshala',
+    'mcleodganj', 'dalhousie', 'khajjiar', 'leh', 'nubra', 'pangong', 'kargil', 'sonamarg', 'gulmarg',
+    'pahalgam', 'srinagar', 'goa', 'jaipur', 'udaipur', 'jodhpur', 'jaisalmer', 'agra', 'varanasi',
+    'khajuraho', 'rann of kutch', 'kutch', 'somnath', 'dwarka', 'saputara', 'mumbai', 'pune',
+    'lonavala', 'mahabaleshwar', 'alibaug', 'bangalore', 'bengaluru', 'mysore', 'coorg', 'ooty',
+    'kodaikanal', 'pondy', 'pondicherry', 'chennai', 'hyderabad', 'ahmedabad', 'surat', 'kolkata',
+    'darjeeling', 'sundarbans', 'gangtok', 'lachung', 'lachen', 'pelling', 'kaziranga', 'shillong',
+    'cherrapunji', 'cherrapunjee', 'dawki', 'tawang', 'bomdila', 'ziro', 'kohima', 'imphal', 'aizawl',
+    'agartala', 'bhubaneswar', 'puri', 'konark', 'gokarna', 'hampi', 'hamta', 'bir', 'billing',
+    'andaman', 'port blair', 'havelock', 'neil island', 'lakshadweep', 'minicoy',
+}
+
+def _norm_text(s: str | None) -> str:
+    return re.sub(r'[^a-z0-9\s]', ' ', (s or '').lower())
+
+
+def detect_team_from_text(text: str) -> str:
+    s = _norm_text(text)
+    # Domestic if any Indian indicator matches
+    for kw in DOMESTIC_KEYWORDS:
+        if kw in s:
+            return 'Domestic Operations'
+    # International if any foreign indicator matches
+    for kw in INTERNATIONAL_KEYWORDS:
+        if kw in s:
+            return 'International Operations'
+    # Heuristics
+    if 'visa' in s or 'passport' in s or 'international' in s:
+        return 'International Operations'
+    # Default: treat as International per brief (any other international destination)
+    return 'International Operations'
+
+
+def assign_all_in_team(ticket: Ticket, team: str) -> None:
+    users = User.query.filter_by(department=team).all()
+    for u in users:
+        if u not in ticket.assignees:
+            ticket.assignees.append(u)
+
+
+@app.route('/submit', methods=['GET', 'POST'])
+def public_submit():
+    provider = (os.getenv('CAPTCHA_PROVIDER') or '').strip().lower()
+    site_key = (os.getenv('CAPTCHA_SITE_KEY') or '').strip()
+    secret = (os.getenv('CAPTCHA_SECRET') or '').strip()
+    if request.method == 'POST':
+        # Honeypot anti-spam field: real users won't see/fill this
+        honeypot = (request.form.get('website') or '').strip()
+        if honeypot:
+            flash('Thanks! We will get back to you shortly.', 'success')
+            return redirect(url_for('public_submit'))
+
+        # Optional CAPTCHA verification (only if provider and keys are present)
+        if provider in ('turnstile', 'hcaptcha') and site_key and secret:
+            try:
+                if provider == 'turnstile':
+                    token = (request.form.get('cf-turnstile-response') or '').strip()
+                    if not token:
+                        raise ValueError('captcha_missing')
+                    resp = requests.post(
+                        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+                        data={
+                            'secret': secret,
+                            'response': token,
+                            'remoteip': request.remote_addr or ''
+                        },
+                        timeout=5
+                    )
+                    ok = resp.ok and resp.json().get('success') is True
+                    if not ok:
+                        flash('Please complete the verification and try again.', 'danger')
+                        return redirect(url_for('public_submit'))
+                elif provider == 'hcaptcha':
+                    token = (request.form.get('h-captcha-response') or '').strip()
+                    if not token:
+                        raise ValueError('captcha_missing')
+                    resp = requests.post(
+                        'https://hcaptcha.com/siteverify',
+                        data={
+                            'secret': secret,
+                            'response': token,
+                            'remoteip': request.remote_addr or ''
+                        },
+                        timeout=5
+                    )
+                    ok = resp.ok and resp.json().get('success') is True
+                    if not ok:
+                        flash('Please complete the verification and try again.', 'danger')
+                        return redirect(url_for('public_submit'))
+            except Exception:
+                # Fail closed with a friendly message (but do not 500)
+                flash('Verification failed. Please try again.', 'danger')
+                return redirect(url_for('public_submit'))
+
+        customer_name = (request.form.get('customer_name') or '').strip()
+        phone = (request.form.get('phone') or '').strip()
+        email = (request.form.get('email') or '').strip()
+        booking_id = (request.form.get('booking_id') or '').strip()
+        destination = (request.form.get('destination') or '').strip()
+        concerns = (request.form.get('concerns') or '').strip()
+
+        if not (destination or concerns):
+            flash('Please provide a destination or concerns for your escalation.', 'danger')
+            return redirect(url_for('public_submit'))
+
+        # Build a combined contact string for storage
+        contact_parts = []
+        if phone:
+            contact_parts.append(f"Phone: {phone}")
+        if email:
+            contact_parts.append(f"Email: {email}")
+        contact = ', '.join(contact_parts)
+
+        subject = (booking_id or destination or (customer_name and f"Escalation from {customer_name}") or 'Escalation')[:200]
+        detection_text = ' '.join([booking_id, destination, concerns, phone, email])
+        team = detect_team_from_text(detection_text)
+
+        t = Ticket(
+            subject=subject,
+            description=(f"Destination: {destination}\n\nConcerns: {concerns}" if destination else f"Concerns: {concerns}"),
+            team=team,
+            priority='Medium',
+            source='Public Form',
+            customer_name=customer_name or None,
+            contact=contact or None,
+            booking_id=booking_id or None,
+        )
+        t.updated_at = datetime.utcnow()
+        assign_all_in_team(t, team)
+        db.session.add(t)
+        db.session.commit()
+
+        try:
+            notify_created(t)
+        except Exception as e:
+            print(f"[warn] Failed to send creation notification: {e}")
+        # Send customer confirmation if email provided or derivable from contact
+        try:
+            cust_email = (email or '').strip() or extract_email_from_contact(contact)
+            if cust_email:
+                notify_customer_created(t, cust_email)
+        except Exception as e:
+            print(f"[warn] Failed to send customer creation email: {e}")
+
+        return render_template('public_thanks.html', ticket=t)
+
+    return render_template('public_submit.html', CAPTCHA_PROVIDER=provider, CAPTCHA_SITE_KEY=site_key)
 
 
 if __name__ == '__main__':

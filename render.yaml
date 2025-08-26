@@ -22,7 +22,7 @@ services:
       - key: FLASK_SECRET_KEY
         generateValue: true
       - key: BASE_URL
-        value: https://escalations.deyor.in
+        value: https://support.deyor.in
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -41,3 +41,11 @@ services:
         value: ""
       - key: NOTIFY_EMAILS
         value: ""
+      - key: CAPTCHA_PROVIDER
+        value: turnstile
+      - key: CAPTCHA_SITE_KEY
+        sync: false
+      - key: CAPTCHA_SECRET
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.9

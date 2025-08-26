@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="airbnb-page">
+    <div class="airbnb-hero p-4 p-md-5 mb-4">
+      <div class="row align-items-center g-3">
+        <div class="col-lg-8">
+          <h2 class="mb-2 fw-bold">We're here to serve you on priority</h2>
+          <p class="mb-0 airbnb-muted">We care about you. <strong>#DeyorCares</strong></p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <img src="{{ url_for('static', filename='css/img/Deyor Logo 2025.png') }}" alt="Deyor" class="hero-logo" onerror="this.style.display='none'">
+        </div>
+      </div>
+    </div>
+
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <div class="card shadow airbnb-card">
+          <div class="card-body p-4 p-md-5">
+            <h4 class="mb-3">Tell us your details</h4>
+            <p class="airbnb-muted mb-4">No login required. Share your destination and concerns and we’ll route it to the right team automatically.</p>
+
+            <form method="post" id="public-submit-form" class="needs-validation" novalidate>
+              <div class="row g-3">
+                <!-- Honeypot field (hidden from users and assistive tech). Bots often fill this -->
+                <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
+                  <label for="website">Website</label>
+                  <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+                <div class="col-md-6">
+                  <label for="customer_name" class="form-label">Name</label>
+                  <input id="customer_name" name="customer_name" type="text" class="form-control airbnb-input" placeholder="e.g. Rohan Gupta" autocomplete="name">
+                </div>
+                <div class="col-md-3">
+                  <label for="phone" class="form-label">Number</label>
+                  <input id="phone" name="phone" type="tel" class="form-control airbnb-input" placeholder="e.g. +91 98…" inputmode="tel" pattern="^[0-9+()\-\s]{7,20}$" title="Enter a valid phone number">
+                  <div class="invalid-feedback">Provide a valid phone number or enter your email.</div>
+                </div>
+                <div class="col-md-3">
+                  <label for="email" class="form-label">Email</label>
+                  <input id="email" name="email" type="email" class="form-control airbnb-input" placeholder="e.g. rohan@example.com" autocomplete="email">
+                  <div class="invalid-feedback">Provide a valid email or enter your phone number.</div>
+                </div>
+                <div class="col-md-6">
+                  <label for="booking_id" class="form-label">Booking ID</label>
+                  <input id="booking_id" name="booking_id" type="text" class="form-control airbnb-input" placeholder="e.g. DY12345 or INT-0001" autocomplete="off">
+                </div>
+                <div class="col-md-6">
+                  <label for="destination" class="form-label">Destination</label>
+                  <input id="destination" name="destination" type="text" class="form-control airbnb-input" placeholder="e.g. Phuket, Bali, Ladakh, Jibhi" aria-describedby="destHelp">
+                  <div id="destHelp" class="form-text">Type any city/region/country (no dropdown).</div>
+                  <div class="invalid-feedback">Enter a destination or describe your concern below.</div>
+                </div>
+                <div class="col-12">
+                  <label for="concerns" class="form-label">Concerns</label>
+                  <textarea id="concerns" name="concerns" class="form-control airbnb-input" rows="6" placeholder="Describe your issue or request"></textarea>
+                  <div class="invalid-feedback">Describe your concern or enter a destination above.</div>
+                </div>
+                {% if CAPTCHA_PROVIDER and CAPTCHA_SITE_KEY %}
+                <div class="col-12">
+                  {% if CAPTCHA_PROVIDER == 'turnstile' %}
+                    <div class="cf-turnstile" data-sitekey="{{ CAPTCHA_SITE_KEY }}"></div>
+                  {% elif CAPTCHA_PROVIDER == 'hcaptcha' %}
+                    <div class="h-captcha" data-sitekey="{{ CAPTCHA_SITE_KEY }}"></div>
+                  {% endif %}
+                </div>
+                {% endif %}
+                <div class="col-12 d-flex gap-2">
+                  <button type="submit" class="btn btn-airbnb">Submit</button>
+                  <a href="/" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="airbnb-muted small mt-2">By submitting, you agree to be contacted regarding this escalation.</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function() {
+      const form = document.getElementById('public-submit-form');
+      if (!form) return;
+      const phone = document.getElementById('phone');
+      const email = document.getElementById('email');
+      const destination = document.getElementById('destination');
+      const concerns = document.getElementById('concerns');
+
+      function validateContact() {
+        const hasPhone = phone && phone.value.trim().length > 0;
+        const hasEmail = email && email.value.trim().length > 0;
+        // Require at least one: phone or email
+        if (!hasPhone && !hasEmail) {
+          // attach custom error to phone field so feedback shows
+          phone.setCustomValidity('Provide phone or email');
+        } else {
+          phone.setCustomValidity('');
+        }
+      }
+
+      function validateTopic() {
+        const hasDest = destination && destination.value.trim().length > 0;
+        const hasConcerns = concerns && concerns.value.trim().length > 0;
+        // Require at least one: destination or concerns
+        if (!hasDest && !hasConcerns) {
+          destination.setCustomValidity('Enter destination or concerns');
+        } else {
+          destination.setCustomValidity('');
+        }
+      }
+
+      ['input', 'change', 'blur'].forEach(evt => {
+        phone.addEventListener(evt, validateContact);
+        email.addEventListener(evt, validateContact);
+        destination.addEventListener(evt, validateTopic);
+        concerns.addEventListener(evt, validateTopic);
+      });
+
+      form.addEventListener('submit', function(e) {
+        validateContact();
+        validateTopic();
+        if (!form.checkValidity()) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        form.classList.add('was-validated');
+      });
+    })();
+  </script>
+  {% if CAPTCHA_PROVIDER and CAPTCHA_SITE_KEY %}
+    {% if CAPTCHA_PROVIDER == 'turnstile' %}
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    {% elif CAPTCHA_PROVIDER == 'hcaptcha' %}
+      <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+

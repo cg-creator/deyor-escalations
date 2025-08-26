@@ -48,16 +48,53 @@ python app.py
 
 Open http://localhost:5000
 
+## Public Submission (No Login)
+
+- Route: `GET/POST /submit`
+- Purpose: let customers create a ticket without logging in. They can provide their destination in free text; the system auto-detects the correct team.
+- Form fields:
+  - Booking/Trip ID (optional)
+  - Destination (free text, optional)
+  - Details/Description (optional but recommended)
+  - Customer Name (optional)
+  - Contact (email or phone, optional)
+
+### Destination detection and auto-assignment
+
+- Keyword-based detection decides team:
+  - International markers: see `INTERNATIONAL_KEYWORDS` in `app.py`.
+  - Domestic (India) markers: see `DOMESTIC_KEYWORDS` in `app.py`.
+  - Extra heuristics: mentions like `visa`, `passport`, or `international` force International.
+  - Default fallback: International if nothing matches.
+- Assignment strategy:
+  - The helper `assign_all_in_team(ticket, team)` assigns the ticket to all `User`s whose `department` matches the detected team.
+  - Email notifications go to all assignees and all admins.
+
+### Customize keywords/rules
+
+- Edit the sets `INTERNATIONAL_KEYWORDS` and `DOMESTIC_KEYWORDS` in `app.py`.
+- Add/remove cities, countries, and Indian states/regions as needed.
+- You can also adjust the fallback or heuristics in `detect_team_from_text()`.
+
+### Test locally
+
+1) Run the app and open `http://localhost:5000/submit`.
+2) Try a few examples:
+   - Destination: `Phuket` (should assign International Operations)
+   - Destination: `Manali` (should assign Domestic Operations)
+   - Description contains `visa` (assigns International Operations)
+3) After submission, you’ll see a thank-you page with the ticket ID and team.
+
 4) Login
 - Visit `/login` and use the initial admin credentials you set in `.env`.
 - Admin can add team members and founders via the navbar Admin menu.
 
 5) Branding (optional)
-- Place `Deyor` logo at `static/css/img/deyor-logo.png` (navbar uses this path).
+- Place `Deyor` logo at `static/css/img/Deyor Logo 2025.png` (navbar uses this path).
 
 ## Notes
 - SQLite DB path defaults to `escalations.db` in the project. You can point `DATABASE_URL` to Postgres/MySQL later.
-- Emails: on ticket creation we include team defaults, per-ticket notify emails, all assignees, and CC founders. On resolution we include team defaults, per-ticket notify emails, assignees, and optionally use global `NOTIFY_EMAILS` as a fallback.
+- Emails: creation and resolution notifications currently go to all assignees and all admins. Team default recipient lists and founders CC are not used in the current implementation.
 
 ## Health & Readiness
 

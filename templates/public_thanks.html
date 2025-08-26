@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block content %}
+  <div class="airbnb-page">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <div class="card airbnb-hero mb-3 p-4">
+          <h3 class="mb-1">Thanks! We've got your escalation.</h3>
+          <p class="airbnb-muted mb-0">A confirmation email has been sent. Our {{ ticket.team }} team will follow up soon.</p>
+        </div>
+
+        <div class="card airbnb-card shadow">
+          <div class="card-body">
+            <div class="alert alert-success mb-4">
+              <div><strong>Ticket ID:</strong> #{{ ticket.id }}</div>
+              <div><strong>Subject:</strong> {{ ticket.subject }}</div>
+              <div><strong>Assigned Team:</strong> {{ ticket.team }}</div>
+              <div><strong>Created At:</strong> {{ ticket.created_at }}</div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <a class="btn btn-airbnb" href="/submit">Submit another</a>
+              <a class="btn btn-outline-secondary" href="/">Back to Home</a>
+            </div>
+
+            <p class="airbnb-muted small mt-3 mb-0">Tip: Reply to our email to add details; your reply will stay linked to this ticket.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
