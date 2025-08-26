@@ -475,6 +475,12 @@ def notify_resolved(ticket: Ticket) -> None:
     # Include all admins
     admin_emails = [u.email for u in User.query.filter_by(role='admin').all() if u.email]
     recipients.update(admin_emails)
+    # Include per-ticket extra recipients (comma-separated)
+    recipients.update(parse_emails(getattr(ticket, 'notify_emails', None)))
+    # Include team default recipients from env, e.g. TEAM_EMAILS_INTERNATIONAL_OPERATIONS
+    recipients.update(get_team_default_emails(ticket.team))
+    # Include global notify list if provided via NOTIFY_EMAILS env
+    recipients.update(parse_emails(os.getenv('NOTIFY_EMAILS', '')))
     if not recipients:
         print("[info] notify_resolved: no recipients; skipping send")
         return  # notifications disabled entirely
@@ -624,6 +630,12 @@ def notify_created(ticket: Ticket) -> None:
     # Include all admins
     admin_emails = [u.email for u in User.query.filter_by(role='admin').all() if u.email]
     recipients.update(admin_emails)
+    # Include per-ticket extra recipients (comma-separated)
+    recipients.update(parse_emails(getattr(ticket, 'notify_emails', None)))
+    # Include team default recipients from env, e.g. TEAM_EMAILS_INTERNATIONAL_OPERATIONS
+    recipients.update(get_team_default_emails(ticket.team))
+    # Include global notify list if provided via NOTIFY_EMAILS env
+    recipients.update(parse_emails(os.getenv('NOTIFY_EMAILS', '')))
     if not recipients:
         print("[info] notify_created: no recipients; skipping send")
         return
