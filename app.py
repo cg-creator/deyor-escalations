@@ -881,8 +881,14 @@ def public_submit():
                         },
                         timeout=5
                     )
-                    ok = resp.ok and resp.json().get('success') is True
+                    data = {}
+                    try:
+                        data = resp.json() if resp is not None else {}
+                    except Exception:
+                        data = {}
+                    ok = resp.ok and data.get('success') is True
                     if not ok:
+                        print(f"[warn] turnstile verify failed: status={getattr(resp, 'status_code', 'n/a')} body={data}")
                         flash('Please complete the verification and try again.', 'danger')
                         return redirect(url_for('public_submit'))
                 elif provider == 'hcaptcha':
@@ -898,12 +904,19 @@ def public_submit():
                         },
                         timeout=5
                     )
-                    ok = resp.ok and resp.json().get('success') is True
+                    data = {}
+                    try:
+                        data = resp.json() if resp is not None else {}
+                    except Exception:
+                        data = {}
+                    ok = resp.ok and data.get('success') is True
                     if not ok:
+                        print(f"[warn] hcaptcha verify failed: status={getattr(resp, 'status_code', 'n/a')} body={data}")
                         flash('Please complete the verification and try again.', 'danger')
                         return redirect(url_for('public_submit'))
-            except Exception:
+            except Exception as e:
                 # Fail closed with a friendly message (but do not 500)
+                print(f"[warn] captcha exception: {e}")
                 flash('Verification failed. Please try again.', 'danger')
                 return redirect(url_for('public_submit'))
 
