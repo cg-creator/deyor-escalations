@@ -185,6 +185,21 @@ with app.app_context():
         db.session.add(admin)
         db.session.commit()
 
+    # Optional: one-time password reset via environment variables
+    try:
+        reset_email = (os.getenv('RESET_USER_EMAIL') or '').strip()
+        reset_pass = (os.getenv('RESET_USER_PASSWORD') or '').strip()
+        if reset_email and reset_pass:
+            u = User.query.filter_by(email=reset_email).first()
+            if u:
+                u.set_password(reset_pass)
+                db.session.commit()
+                print(f"[info] Password reset via env for user {u.email}")
+            else:
+                print(f"[warn] RESET_USER_EMAIL specified but no user found: {reset_email}")
+    except Exception as e:
+        print(f"[warn] env-based password reset failed: {e}")
+
 
 # Login manager setup
 login_manager = LoginManager()
