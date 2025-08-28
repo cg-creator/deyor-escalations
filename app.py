@@ -791,7 +791,15 @@ def login():
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
+        ok = False
+        if user:
+            try:
+                ok = user.check_password(password)
+            except Exception as e:
+                # Do not leak details to the user; log and treat as invalid
+                print(f"[warn] password verification error for {email}: {e}")
+                ok = False
+        if ok:
             login_user(user)
             return redirect(url_for('list_tickets'))
         flash('Invalid credentials.', 'danger')
