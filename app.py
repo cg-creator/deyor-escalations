@@ -95,7 +95,28 @@ class User(db.Model, UserMixin):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password: str) -> bool:
-        return check_password_hash(self.password_hash, password)
+        # Primary: verify using Werkzeug hash (pbkdf2/scrypt). Handle invalid/legacy hashes safely.
+        try:
+            if self.password_hash and check_password_hash(self.password_hash, password):
+                return True
+        except ValueError:
+            # e.g., "Invalid hash method ''" from legacy/empty hashes
+            pass
+
+        # Fallback: if DB stored plaintext historically, allow once and upgrade hash
+        try:
+            if self.password_hash == password and password:
+                # Upgrade to a secure hash transparently
+                self.set_password(password)
+                try:
+                    db.session.commit()
+                except Exception as e:
+                    print(f"[warn] failed to upgrade password hash for user {self.id}: {e}")
+                return True
+        except Exception:
+            pass
+
+        return False
 
 
 class Founder(db.Model):
@@ -118,6 +139,15 @@ def ensure_schema():
     """Minimal migration to add missing columns when using SQLite."""
     try:
         eng = db.engine
+        # Only run these PRAGMA-based adjustments for SQLite
+        try:
+            dialect = getattr(eng, 'dialect', None)
+            name = getattr(dialect, 'name', '') if dialect else ''
+            if name and name.lower() != 'sqlite':
+                return
+        except Exception:
+            # If detection fails, proceed conservatively
+            pass
         with eng.connect() as conn:
             cols = [row[1] for row in conn.execute(text("PRAGMA table_info(tickets)"))]
             if 'notify_emails' not in cols:
@@ -789,6 +819,31 @@ def ready():
         return {'status': 'ready'}
     except Exception:
         return {'status': 'degraded'}, 503
+
+
+# Temporary debug endpoint to verify DB connection target and data presence
+@app.route('/debug/db')
+def debug_db():
+    try:
+        # Identify current database name
+        with db.engine.connect() as conn:
+            dbname = conn.execute(text('SELECT current_database()')).scalar()
+
+        # Check counts for expected tables; mark as 'missing' if table not found
+        tables = ['tickets', 'users', 'comments', 'founders', 'ticket_assignees']
+        counts = {}
+        for t in tables:
+            try:
+                counts[t] = db.session.execute(text(f'SELECT COUNT(*) FROM {t}')).scalar()
+            except Exception:
+                counts[t] = 'missing'
+
+        return {
+            'database': dbname,
+            'counts': counts,
+        }
+    except Exception as e:
+        return {'error': str(e)}, 500
 
 
 # -------- Public submission + auto-assignment helpers --------
