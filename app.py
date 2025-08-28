@@ -878,6 +878,25 @@ def debug_db():
         return {'error': str(e)}, 500
 
 
+# Temporary debug endpoint to list users (read-only)
+@app.route('/debug/users')
+def debug_users():
+    try:
+        q = (request.args.get('q') or '').strip()
+        query = User.query
+        if q:
+            like = f"%{q.lower()}%"
+            query = query.filter(func.lower(User.email).like(like) | func.lower(User.name).like(like))
+        rows = query.with_entities(User.id, User.email, User.role, User.name).order_by(User.id.asc()).all()
+        return {
+            'users': [
+                {'id': r[0], 'email': r[1], 'role': r[2], 'name': r[3]}
+                for r in rows
+            ]
+        }
+    except Exception as e:
+        return {'error': str(e)}, 500
+
 # -------- Public submission + auto-assignment helpers --------
 INTERNATIONAL_KEYWORDS = {
     # Countries/regions and popular cities (non-exhaustive)
