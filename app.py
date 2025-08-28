@@ -185,10 +185,11 @@ with app.app_context():
         db.session.add(admin)
         db.session.commit()
 
-    # Optional: one-time password reset via environment variables
+    # Optional: one-time password reset and role promotion via environment variables
     try:
         reset_email = (os.getenv('RESET_USER_EMAIL') or '').strip()
         reset_pass = (os.getenv('RESET_USER_PASSWORD') or '').strip()
+        reset_make_admin = (os.getenv('RESET_USER_MAKE_ADMIN') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
         if reset_email and reset_pass:
             u = None
             try:
@@ -201,6 +202,23 @@ with app.app_context():
                 print(f"[info] Password reset via env for user {u.email}")
             else:
                 print(f"[warn] RESET_USER_EMAIL specified but no user found: {reset_email}")
+
+        # Allow admin promotion separately (does not require providing a password)
+        if reset_email and reset_make_admin:
+            u2 = None
+            try:
+                u2 = User.query.filter(func.lower(User.email) == reset_email.lower()).first()
+            except Exception as e:
+                print(f"[warn] admin promotion lookup failed for {reset_email}: {e}")
+            if u2:
+                if u2.role != 'admin':
+                    u2.role = 'admin'
+                    db.session.commit()
+                    print(f"[info] Role promotion via env: {u2.email} -> admin")
+                else:
+                    print(f"[info] Role promotion skipped: {u2.email} already admin")
+            else:
+                print(f"[warn] RESET_USER_MAKE_ADMIN set but no user found for: {reset_email}")
     except Exception as e:
         print(f"[warn] env-based password reset failed: {e}")
 
