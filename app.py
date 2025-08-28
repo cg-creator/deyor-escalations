@@ -10,7 +10,7 @@ import requests
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
-from sqlalchemy import or_, text
+from sqlalchemy import or_, text, func
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 )
@@ -190,7 +190,11 @@ with app.app_context():
         reset_email = (os.getenv('RESET_USER_EMAIL') or '').strip()
         reset_pass = (os.getenv('RESET_USER_PASSWORD') or '').strip()
         if reset_email and reset_pass:
-            u = User.query.filter_by(email=reset_email).first()
+            u = None
+            try:
+                u = User.query.filter(func.lower(User.email) == reset_email.lower()).first()
+            except Exception as e:
+                print(f"[warn] reset email lookup failed for {reset_email}: {e}")
             if u:
                 u.set_password(reset_pass)
                 db.session.commit()
@@ -805,7 +809,12 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
-        user = User.query.filter_by(email=email).first()
+        user = None
+        try:
+            if email:
+                user = User.query.filter(func.lower(User.email) == email.lower()).first()
+        except Exception as e:
+            print(f"[warn] login email lookup failed for {email}: {e}")
         ok = False
         if user:
             try:
