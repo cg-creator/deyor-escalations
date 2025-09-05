@@ -29,6 +29,19 @@
         <span class="badge bg-success align-self-center">Resolved</span>
       {% endif %}
 
+      {% set assigned_ids = t.assignees | map(attribute='id') | list %}
+      {% if current_user.role == 'admin' or current_user.id in assigned_ids %}
+        <form method="post" action="{{ url_for('transfer_ticket', ticket_id=t.id) }}" class="d-flex align-items-center gap-2">
+          <select class="form-select form-select-sm" name="new_lead" required>
+            <option value="">Transfer lead to…</option>
+            {% for a in agents %}
+              <option value="{{ a.id }}" {% if t.lead_assignee_id==a.id %}selected{% endif %}>{{ a.name }} — {{ a.department or 'Unassigned' }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-outline-primary btn-sm" type="submit">Transfer</button>
+        </form>
+      {% endif %}
+
       {% if current_user.role == 'admin' %}
         <form method="post" action="{{ url_for('delete_ticket', ticket_id=t.id) }}" onsubmit="return confirm('Delete ticket #{{ t.id }} permanently? This cannot be undone.');">
           <button class="btn btn-outline-danger" type="submit">Delete</button>
@@ -61,7 +74,7 @@
           </form>
           {% for c in t.comments|sort(attribute='created_at') %}
             <div class="border-top py-2">
-              <div class="small text-muted">{{ c.author or 'Anonymous' }} · {{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+              <div class="small text-muted">{{ c.author or 'Anonymous' }} · {{ c.created_at|fmt_ist('%Y-%m-%d %H:%M') }}</div>
               <div>{{ c.body }}</div>
             </div>
           {% else %}
@@ -82,11 +95,12 @@
           <div class="mb-2"><strong>Customer:</strong> {{ t.customer_name or '—' }}</div>
           <div class="mb-2"><strong>Contact:</strong> {{ t.contact or '—' }}</div>
           <div class="mb-2"><strong>Booking/Trip ID:</strong> {{ t.booking_id or '—' }}</div>
+          <div class="mb-1"><strong>Lead Assignee:</strong> {{ t.lead_assignee and t.lead_assignee.name or '—' }}</div>
           <div class="mb-2"><strong>Assignees:</strong> {{ (t.assignees | map(attribute='name') | list | join(', ')) or (t.assigned_to or '—') }}</div>
           <div class="mb-2"><strong>Notify emails:</strong> {{ t.notify_emails or '—' }}</div>
-          <div class="mb-2"><strong>Created:</strong> {{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+          <div class="mb-2"><strong>Created:</strong> {{ t.created_at|fmt_ist('%Y-%m-%d %H:%M') }}</div>
           {% if t.resolved_at %}
-            <div class="mb-2"><strong>Resolved:</strong> {{ t.resolved_at.strftime('%Y-%m-%d %H:%M') }} by {{ t.resolved_by or '—' }}</div>
+            <div class="mb-2"><strong>Resolved:</strong> {{ t.resolved_at|fmt_ist('%Y-%m-%d %H:%M') }} by {{ t.resolved_by or '—' }}</div>
           {% endif %}
         </div>
       </div>

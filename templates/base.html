@@ -21,6 +21,35 @@
         <div class="d-flex align-items-center gap-2">
           <a class="btn btn-success" href="{{ url_for('public_submit') }}">Submit</a>
           {% if current_user.is_authenticated %}
+            <div class="dropdown me-1">
+              <button class="btn btn-outline-secondary position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifications">
+                <!-- Bell icon (inline SVG) -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2"/>
+                  <path d="M8 1.918a1.5 1.5 0 0 1 1.356.83c.325.61.932 1.318 1.604 1.906C11.59 5.33 12 6.623 12 8v2.086l.854 1.707A.5.5 0 0 1 12.414 12H3.586a.5.5 0 0 1-.44-.707L4 10.086V8c0-1.377.41-2.67 1.04-3.346.672-.588 1.279-1.296 1.604-1.906A1.5 1.5 0 0 1 8 1.918"/>
+                </svg>
+                {% if nav_unread_count and nav_unread_count > 0 %}
+                  <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ nav_unread_count }}</span>
+                {% endif %}
+              </button>
+              <div class="dropdown-menu dropdown-menu-end p-0" style="min-width: 320px; max-height: 360px; overflow:auto;">
+                <div class="list-group list-group-flush">
+                  {% for n in nav_notifications %}
+                    <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {{ n.is_read and 'opacity-75' or '' }}" href="{{ n.ticket_id and url_for('ticket_detail', ticket_id=n.ticket_id) or '#' }}">
+                      <div class="me-2 small">{{ n.message }}</div>
+                      <small class="text-muted">{{ n.created_at|fmt_ist('%d %b %I:%M %p') }}</small>
+                    </a>
+                  {% else %}
+                    <div class="p-3 text-muted small">No notifications</div>
+                  {% endfor %}
+                </div>
+                <div class="border-top p-2 text-end">
+                  <form method="post" action="{{ url_for('mark_all_notifications_read') }}">
+                    <button class="btn btn-link btn-sm" type="submit">Mark all read</button>
+                  </form>
+                </div>
+              </div>
+            </div>
             <a class="btn btn-outline-primary" href="{{ url_for('new_ticket') }}">New Ticket</a>
             <a class="btn btn-outline-secondary" href="{{ url_for('list_tickets') }}">All Tickets</a>
             {% if current_user.role == 'admin' %}

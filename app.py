@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import smtplib
 import ssl
 import certifi
@@ -61,6 +62,8 @@ class Ticket(db.Model):
     status = db.Column(db.String(20), default='Open', nullable=False)
 
     assigned_to = db.Column(db.String(120))
+    # Lead assignee - a single user responsible for the ticket
+    lead_assignee_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     # Comma-separated notification emails for this ticket
     notify_emails = db.Column(db.Text)
 
@@ -72,6 +75,7 @@ class Ticket(db.Model):
     # Relationships
     comments = db.relationship('Comment', backref='ticket', lazy=True, cascade='all, delete-orphan')
     assignees = db.relationship('User', secondary='ticket_assignees', backref='assigned_tickets')
+    lead_assignee = db.relationship('User', foreign_keys=[lead_assignee_id], lazy=True)
 
 
 # Association table for many-to-many Ticket<->User
@@ -135,6 +139,24 @@ class Comment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    type = db.Column(db.String(50))
+    ticket_id = db.Column(db.Integer, db.ForeignKey('tickets.id'))
+    message = db.Column(db.Text)
+    actor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    is_read = db.Column(db.Boolean, default=False, nullable=False)
+
+
+class AppMeta(db.Model):
+    __tablename__ = 'app_meta'
+    key = db.Column(db.String(50), primary_key=True)
+    value = db.Column(db.String(200))
+
+
 def ensure_schema():
     """Minimal migration to add missing columns when using SQLite."""
     try:
@@ -143,6 +165,44 @@ def ensure_schema():
         try:
             dialect = getattr(eng, 'dialect', None)
             name = getattr(dialect, 'name', '') if dialect else ''
+            if name and name.lower() == 'postgresql':
+                with eng.connect() as conn:
+                    # Add column to tickets if missing
+                    conn.execute(text("""
+                        ALTER TABLE tickets
+                        ADD COLUMN IF NOT EXISTS lead_assignee_id INTEGER
+                    """))
+                    # Create notifications table
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS notifications (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER NOT NULL REFERENCES users(id),
+                            type VARCHAR(50),
+                            ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL,
+                            message TEXT,
+                            actor_id INTEGER REFERENCES users(id),
+                            created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+                            is_read BOOLEAN NOT NULL DEFAULT FALSE
+                        )
+                    """))
+                    # Create app_meta table
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS app_meta (
+                            key VARCHAR(50) PRIMARY KEY,
+                            value VARCHAR(200)
+                        )
+                    """))
+                    # Helpful indexes
+                    conn.execute(text("""
+                        CREATE INDEX IF NOT EXISTS idx_notifications_user_created
+                        ON notifications(user_id, created_at DESC)
+                    """))
+                    conn.execute(text("""
+                        CREATE INDEX IF NOT EXISTS idx_notifications_ticket
+                        ON notifications(ticket_id)
+                    """))
+                    conn.commit()
+                return
             if name and name.lower() != 'sqlite':
                 return
         except Exception:
@@ -157,18 +217,21 @@ def ensure_schema():
                 # Provide a server default to satisfy NOT NULL on existing rows
                 conn.execute(text("ALTER TABLE tickets ADD COLUMN updated_at DATETIME DEFAULT (CURRENT_TIMESTAMP) NOT NULL"))
                 conn.commit()
-            # Backfill any NULL updated_at values (covers legacy rows or prior schema)
-            try:
-                conn.execute(text("UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"))
-                conn.commit()
-            except Exception:
-                pass
             if 'resolved_at' not in cols:
                 conn.execute(text("ALTER TABLE tickets ADD COLUMN resolved_at DATETIME"))
                 conn.commit()
             if 'resolved_by' not in cols:
                 conn.execute(text("ALTER TABLE tickets ADD COLUMN resolved_by VARCHAR(120)"))
                 conn.commit()
+            if 'lead_assignee_id' not in cols:
+                conn.execute(text("ALTER TABLE tickets ADD COLUMN lead_assignee_id INTEGER"))
+                conn.commit()
+            # Backfill any NULL updated_at values (covers legacy rows or prior schema)
+            try:
+                conn.execute(text("UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"))
+                conn.commit()
+            except Exception:
+                pass
     except Exception as e:
         print(f"[warn] ensure_schema failed: {e}")
 
@@ -176,6 +239,39 @@ def ensure_schema():
 with app.app_context():
     db.create_all()
     ensure_schema()
+    # One-time IST migration (optional, guarded by env var and meta flag)
+    try:
+        do_ist = (os.getenv('APPLY_IST_MIGRATION') or '').strip().lower() in {'1','true','yes','on'}
+        done = AppMeta.query.get('ist_shift_done') is not None
+        if do_ist and not done:
+            shift = timedelta(hours=5, minutes=30)
+            # Shift tickets
+            try:
+                for t in Ticket.query.all():
+                    if t.created_at:
+                        t.created_at = t.created_at + shift
+                    if t.updated_at:
+                        t.updated_at = t.updated_at + shift
+                    if t.resolved_at:
+                        t.resolved_at = t.resolved_at + shift
+                db.session.commit()
+            except Exception as e:
+                print(f"[warn] IST shift tickets failed: {e}")
+            # Shift comments
+            try:
+                for c in Comment.query.all():
+                    if c.created_at:
+                        c.created_at = c.created_at + shift
+                db.session.commit()
+            except Exception as e:
+                print(f"[warn] IST shift comments failed: {e}")
+            try:
+                db.session.add(AppMeta(key='ist_shift_done', value=datetime.utcnow().isoformat()))
+                db.session.commit()
+            except Exception as e:
+                print(f"[warn] IST shift meta save failed: {e}")
+    except Exception as e:
+        print(f"[warn] IST migration block failed: {e}")
     # Bootstrap initial admin if no users exist
     if User.query.count() == 0:
         admin_email = os.getenv('ADMIN_EMAIL', 'admin@deyor.local')
@@ -232,6 +328,42 @@ login_manager.init_app(app)
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+# ---- Jinja filter to format datetimes in IST ----
+def fmt_dt_ist(dt: datetime, fmt: str = '%Y-%m-%d %H:%M') -> str:
+    if not dt:
+        return '—'
+    try:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo('UTC'))
+        return dt.astimezone(ZoneInfo('Asia/Kolkata')).strftime(fmt)
+    except Exception:
+        try:
+            return dt.strftime(fmt)
+        except Exception:
+            return str(dt)
+
+app.jinja_env.filters['fmt_ist'] = fmt_dt_ist
+
+
+# ---- Navbar notifications context ----
+@app.context_processor
+def inject_nav_notifications():
+    try:
+        if current_user.is_authenticated:
+            founder_emails = set(e[0].lower() for e in db.session.query(Founder.email).all())
+            is_founder_user = (getattr(current_user, 'email', '') or '').lower() in founder_emails
+            if getattr(current_user, 'role', None) == 'admin' or is_founder_user:
+                base_q = Notification.query
+            else:
+                base_q = Notification.query.filter_by(user_id=current_user.id)
+            notes = base_q.order_by(Notification.created_at.desc()).limit(10).all()
+            unread_count = base_q.filter_by(is_read=False).count()
+            return dict(nav_notifications=notes, nav_unread_count=unread_count)
+    except Exception as e:
+        print(f"[warn] inject_nav_notifications failed: {e}")
+    return dict(nav_notifications=[], nav_unread_count=0)
 
 
 @app.route('/')
@@ -358,7 +490,40 @@ def list_tickets():
         avg_close_human = '—'
 
     tickets = query.order_by(Ticket.created_at.desc()).all()
-    return render_template('tickets_list.html', tickets=tickets, TEAMS=TEAMS, PRIORITIES=PRIORITIES, STATUSES=STATUSES, current_team=team, current_status=status, q=q, total_count=total_count, open_count=open_count, inprog_count=inprog_count, resolved_count=resolved_count, closed_pct=closed_pct, avg_close_time=avg_close_human, current_date_range=date_range, start_date=start_date, end_date=end_date)
+    # Notifications for the dashboard bar
+    try:
+        # Admins and Founders (by email) see all notifications
+        founder_emails = set(e[0].lower() for e in db.session.query(Founder.email).all())
+        is_founder_user = (getattr(current_user, 'email', '') or '').lower() in founder_emails
+        if getattr(current_user, 'role', None) == 'admin' or is_founder_user:
+            notes = Notification.query.order_by(Notification.created_at.desc()).limit(20).all()
+        else:
+            notes = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(20).all()
+        unread_count = sum(1 for n in notes if not n.is_read)
+    except Exception:
+        notes = []
+        unread_count = 0
+    return render_template(
+        'tickets_list.html',
+        tickets=tickets,
+        TEAMS=TEAMS,
+        PRIORITIES=PRIORITIES,
+        STATUSES=STATUSES,
+        current_team=team,
+        current_status=status,
+        q=q,
+        total_count=total_count,
+        open_count=open_count,
+        inprog_count=inprog_count,
+        resolved_count=resolved_count,
+        closed_pct=closed_pct,
+        avg_close_time=avg_close_human,
+        current_date_range=date_range,
+        start_date=start_date,
+        end_date=end_date,
+        notifications=notes,
+        unread_count=unread_count,
+    )
 
 
 @app.route('/tickets/new', methods=['GET', 'POST'])
@@ -376,6 +541,18 @@ def new_ticket():
         assignee_ids_raw = request.form.getlist('assignees')  # from multi-select/checkboxes
         assignee_ids = [int(x) for x in assignee_ids_raw if x and str(x).isdigit()]
         notify_emails = request.form.get('notify_emails', '').strip()  # legacy
+        lead_assignee_raw = (request.form.get('lead_assignee') or '').strip()
+        lead_assignee_id = int(lead_assignee_raw) if lead_assignee_raw.isdigit() else None
+
+        # Lead assignee is mandatory
+        if not lead_assignee_id:
+            flash('Please select a lead assignee.', 'danger')
+            return redirect(url_for('new_ticket'))
+
+        # Validate: if a lead is chosen, it must be in selected assignees
+        if lead_assignee_id and (lead_assignee_id not in assignee_ids):
+            flash('Lead assignee must be one of the selected assignees.', 'danger')
+            return redirect(url_for('new_ticket'))
 
         if not booking_id or not description:
             flash('Booking ID and description are required.', 'danger')
@@ -395,6 +572,8 @@ def new_ticket():
         )
         # Ensure updated_at is populated on insert to satisfy NOT NULL in SQLite
         t.updated_at = datetime.utcnow()
+        if lead_assignee_id:
+            t.lead_assignee_id = lead_assignee_id
         # Attach selected assignees
         users = []
         if assignee_ids:
@@ -407,6 +586,11 @@ def new_ticket():
             notify_created(t)
         except Exception as e:
             print(f"[warn] Failed to send creation notification: {e}")
+        # Create in-app notifications
+        try:
+            create_notifications_for_event('ticket_created', t, f"New ticket #{t.id} created", actor=current_user if getattr(current_user, 'is_authenticated', False) else None)
+        except Exception as e:
+            print(f"[warn] Failed to create in-app notifications: {e}")
         # Send customer confirmation if email provided or derivable from contact
         try:
             cust_email = extract_email_from_contact(contact)
@@ -431,7 +615,8 @@ def ticket_detail(ticket_id: int):
         if current_user.id not in assigned_ids:
             flash('You do not have access to this ticket.', 'danger')
             return redirect(url_for('list_tickets'))
-    return render_template('ticket_detail.html', t=t, STATUSES=STATUSES)
+    agents = User.query.order_by(User.name.asc()).all()
+    return render_template('ticket_detail.html', t=t, STATUSES=STATUSES, agents=agents)
 
 
 @app.route('/tickets/<int:ticket_id>/comment', methods=['POST'])
@@ -446,6 +631,11 @@ def add_comment(ticket_id: int):
     c = Comment(ticket_id=t.id, author=author or None, body=body)
     db.session.add(c)
     db.session.commit()
+    # In-app notifications for comment
+    try:
+        create_notifications_for_event('comment_added', t, f"New comment on ticket #{t.id}", actor=current_user)
+    except Exception as e:
+        print(f"[warn] Failed to create comment notifications: {e}")
     flash('Comment added.', 'success')
     return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -466,6 +656,11 @@ def resolve_ticket(ticket_id: int):
         except Exception as e:
             # Do not block resolution on email errors
             print(f"[warn] Failed to send notification: {e}")
+        # In-app notifications
+        try:
+            create_notifications_for_event('ticket_resolved', t, f"Ticket #{t.id} resolved", actor=current_user)
+        except Exception as e:
+            print(f"[warn] Failed to create resolve notifications: {e}")
         # Notify customer if we have an email
         try:
             cust_email = extract_email_from_contact(t.contact)
@@ -496,6 +691,10 @@ def update_status(ticket_id: int):
             notify_resolved(t)
         except Exception as e:
             print(f"[warn] Failed to send notification: {e}")
+        try:
+            create_notifications_for_event('ticket_resolved', t, f"Ticket #{t.id} resolved", actor=current_user)
+        except Exception as e:
+            print(f"[warn] Failed to create resolve notifications: {e}")
         # Notify customer if we have an email
         try:
             cust_email = extract_email_from_contact(t.contact)
@@ -509,6 +708,10 @@ def update_status(ticket_id: int):
         t.resolved_at = None
         t.resolved_by = None
         db.session.commit()
+        try:
+            create_notifications_for_event('status_changed', t, f"Ticket #{t.id} status: {new_status}", actor=current_user)
+        except Exception as e:
+            print(f"[warn] Failed to create status notifications: {e}")
         flash(f'Status updated to {new_status}.', 'success')
     return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
@@ -527,6 +730,95 @@ def delete_ticket(ticket_id: int):
     db.session.delete(t)
     db.session.commit()
     flash('Ticket deleted.', 'success')
+    return redirect(url_for('list_tickets'))
+
+
+# ---- Ticket transfer (change lead assignee) ----
+@app.route('/tickets/<int:ticket_id>/transfer', methods=['POST'])
+@login_required
+def transfer_ticket(ticket_id: int):
+    t = Ticket.query.get_or_404(ticket_id)
+    # Permission: must be admin or currently assigned on ticket
+    if getattr(current_user, 'role', None) != 'admin':
+        assigned_ids = {u.id for u in t.assignees}
+        if current_user.id not in assigned_ids:
+            flash('You do not have permission to transfer this ticket.', 'danger')
+            return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+    new_lead_raw = (request.form.get('new_lead') or '').strip()
+    if not new_lead_raw.isdigit():
+        flash('Invalid selection.', 'danger')
+        return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+    new_lead_id = int(new_lead_raw)
+    try:
+        new_lead = User.query.get(new_lead_id)
+        if not new_lead:
+            raise ValueError('User not found')
+        t.lead_assignee_id = new_lead_id
+        # Ensure new lead is in assignees
+        if new_lead not in t.assignees:
+            t.assignees.append(new_lead)
+        db.session.commit()
+        try:
+            create_notifications_for_event('ticket_transferred', t, f"Ticket #{t.id} lead transferred to {new_lead.name}", actor=current_user)
+        except Exception as e:
+            print(f"[warn] Failed to create transfer notifications: {e}")
+        flash('Lead transferred.', 'success')
+    except Exception as e:
+        print(f"[warn] transfer failed: {e}")
+        flash('Transfer failed.', 'danger')
+    return redirect(url_for('ticket_detail', ticket_id=ticket_id))
+
+
+# ---- Notifications helpers & endpoints ----
+def recipients_for_ticket(ticket: Ticket) -> list[int]:
+    ids = set()
+    # All assignees
+    for u in ticket.assignees:
+        if u and u.id:
+            ids.add(u.id)
+    # Lead
+    if ticket.lead_assignee_id:
+        ids.add(ticket.lead_assignee_id)
+    # Admins get all
+    try:
+        for u in User.query.filter_by(role='admin').all():
+            if u and u.id:
+                ids.add(u.id)
+        # Founders: map by email to user accounts, include them
+        founder_emails = set(e[0].lower() for e in db.session.query(Founder.email).all())
+        if founder_emails:
+            for u in User.query.filter(func.lower(User.email).in_(founder_emails)).all():
+                if u and u.id:
+                    ids.add(u.id)
+    except Exception:
+        pass
+    return list(ids)
+
+
+def create_notifications_for_event(kind: str, ticket: Ticket, message: str, actor: User | None = None) -> None:
+    try:
+        ids = recipients_for_ticket(ticket)
+        for uid in ids:
+            n = Notification(user_id=uid, type=kind, ticket_id=ticket.id, message=message, actor_id=(actor.id if actor else None))
+            db.session.add(n)
+        db.session.commit()
+    except Exception as e:
+        print(f"[warn] create_notifications_for_event failed: {e}")
+
+
+@app.route('/notifications/mark_all_read', methods=['POST'])
+@login_required
+def mark_all_notifications_read():
+    try:
+        q = Notification.query
+        if getattr(current_user, 'role', None) != 'admin':
+            q = q.filter_by(user_id=current_user.id)
+        for n in q.filter_by(is_read=False).all():
+            n.is_read = True
+        db.session.commit()
+        flash('Notifications marked as read.', 'success')
+    except Exception as e:
+        print(f"[warn] mark_all_notifications_read failed: {e}")
     return redirect(url_for('list_tickets'))
 
 
@@ -1086,6 +1378,11 @@ def public_submit():
             notify_created(t)
         except Exception as e:
             print(f"[warn] Failed to send creation notification: {e}")
+        # In-app notifications for public-created ticket
+        try:
+            create_notifications_for_event('ticket_created', t, f"New ticket #{t.id} created", actor=None)
+        except Exception as e:
+            print(f"[warn] Failed to create public ticket notifications: {e}")
         # Send customer confirmation if email provided or derivable from contact
         try:
             cust_email = (email or '').strip() or extract_email_from_contact(contact)

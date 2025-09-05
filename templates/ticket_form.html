@@ -64,6 +64,16 @@
         <div class="form-text">Open the dropdown and tick multiple team members.</div>
       </div>
       <div class="col-md-6">
+        <label class="form-label">Lead assignee</label>
+        <select class="form-select" name="lead_assignee" id="leadSelect" required>
+          <option value="">— Select lead —</option>
+          {% for a in agents %}
+            <option value="{{ a.id }}" data-dept="{{ a.department or '' }}">{{ a.name }} — {{ a.department or 'Unassigned' }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">The lead is primarily responsible for this ticket.</div>
+      </div>
+      <div class="col-md-6">
         <label class="form-label">Notify emails (comma-separated)</label>
         <input type="text" class="form-control" name="notify_emails" placeholder="ops@deyor, lead@deyor">
         <div class="form-text">These recipients will get an email immediately when the ticket is created.</div>
@@ -82,6 +92,7 @@
       const label = document.getElementById('assigneesDropdownLabel');
       const badge = document.getElementById('assigneeCount');
       const teamSel = document.getElementById('teamSelect');
+      const leadSel = document.getElementById('leadSelect');
 
       function refresh() {
         const selected = Array.from(checks).filter(c => c.checked);
@@ -113,12 +124,43 @@
         refresh();
       }
 
-      checks.forEach(c => c.addEventListener('change', refresh));
+      function rebuildLeadFromSelected() {
+        if (!leadSel) return;
+        const selected = Array.from(checks).filter(c => c.checked);
+        // Remember current selection
+        const prev = leadSel.value;
+        // Reset to placeholder
+        leadSel.innerHTML = '<option value="">— Select lead —</option>';
+        if (selected.length === 0) {
+          leadSel.value = '';
+          leadSel.disabled = true;
+          return;
+        }
+        selected.forEach(c => {
+          const labelEl = c.closest('label');
+          const nameTxt = labelEl ? (labelEl.querySelector('span')?.textContent || '').trim() : c.value;
+          const opt = document.createElement('option');
+          opt.value = c.value;
+          opt.textContent = nameTxt;
+          leadSel.appendChild(opt);
+        });
+        leadSel.disabled = false;
+        // Restore previous selection if still available among selected
+        if (prev && Array.from(leadSel.options).some(o => o.value === prev)) {
+          leadSel.value = prev;
+        } else {
+          // If previously selected lead is no longer among selected assignees, clear it
+          leadSel.value = '';
+        }
+      }
+
+      checks.forEach(c => c.addEventListener('change', () => { refresh(); rebuildLeadFromSelected(); }));
       if (teamSel) {
-        teamSel.addEventListener('change', filterByTeam);
+        teamSel.addEventListener('change', () => { filterByTeam(); rebuildLeadFromSelected(); });
         // Initial filter on load
         filterByTeam();
       }
+      rebuildLeadFromSelected();
       refresh();
     })();
   </script>
