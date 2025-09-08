@@ -35,7 +35,7 @@
               <div class="dropdown-menu dropdown-menu-end p-0" style="min-width: 320px; max-height: 360px; overflow:auto;">
                 <div class="list-group list-group-flush">
                   {% for n in nav_notifications %}
-                    <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start {{ n.is_read and 'opacity-75' or '' }}" href="{{ n.ticket_id and url_for('ticket_detail', ticket_id=n.ticket_id) or '#' }}">
+                    <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start" href="{{ url_for('go_notification', nid=n.id) }}">
                       <div class="me-2 small">{{ n.message }}</div>
                       <small class="text-muted">{{ n.created_at|fmt_ist('%d %b %I:%M %p') }}</small>
                     </a>
@@ -43,8 +43,9 @@
                     <div class="p-3 text-muted small">No notifications</div>
                   {% endfor %}
                 </div>
-                <div class="border-top p-2 text-end">
-                  <form method="post" action="{{ url_for('mark_all_notifications_read') }}">
+                <div class="border-top p-2 d-flex justify-content-between align-items-center">
+                  <a class="btn btn-link btn-sm" href="{{ url_for('notifications_list') }}">View all</a>
+                  <form method="post" action="{{ url_for('mark_all_notifications_read') }}" class="mb-0">
                     <button class="btn btn-link btn-sm" type="submit">Mark all read</button>
                   </form>
                 </div>

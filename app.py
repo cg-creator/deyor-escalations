@@ -352,13 +352,16 @@ app.jinja_env.filters['fmt_ist'] = fmt_dt_ist
 def inject_nav_notifications():
     try:
         if current_user.is_authenticated:
-            founder_emails = set(e[0].lower() for e in db.session.query(Founder.email).all())
-            is_founder_user = (getattr(current_user, 'email', '') or '').lower() in founder_emails
-            if getattr(current_user, 'role', None) == 'admin' or is_founder_user:
-                base_q = Notification.query
-            else:
-                base_q = Notification.query.filter_by(user_id=current_user.id)
-            notes = base_q.order_by(Notification.created_at.desc()).limit(10).all()
+            # Scope navbar dropdown to ONLY the current user's notifications to avoid duplicates
+            base_q = Notification.query.filter_by(user_id=current_user.id)
+            # Show only unread items in the bell dropdown
+            notes = (
+                base_q
+                .filter_by(is_read=False)
+                .order_by(Notification.created_at.desc())
+                .limit(10)
+                .all()
+            )
             unread_count = base_q.filter_by(is_read=False).count()
             return dict(nav_notifications=notes, nav_unread_count=unread_count)
     except Exception as e:
@@ -799,8 +802,24 @@ def create_notifications_for_event(kind: str, ticket: Ticket, message: str, acto
     try:
         ids = recipients_for_ticket(ticket)
         for uid in ids:
-            n = Notification(user_id=uid, type=kind, ticket_id=ticket.id, message=message, actor_id=(actor.id if actor else None))
-            db.session.add(n)
+            # Deduplicate: if an unread notification of same type/ticket already exists for this user, skip creating another
+            try:
+                exists = (
+                    Notification.query
+                    .filter_by(user_id=uid, type=kind, ticket_id=ticket.id, is_read=False)
+                    .first()
+                )
+            except Exception:
+                exists = None
+            if exists is None:
+                n = Notification(
+                    user_id=uid,
+                    type=kind,
+                    ticket_id=ticket.id,
+                    message=message,
+                    actor_id=(actor.id if actor else None),
+                )
+                db.session.add(n)
         db.session.commit()
     except Exception as e:
         print(f"[warn] create_notifications_for_event failed: {e}")
@@ -810,16 +829,87 @@ def create_notifications_for_event(kind: str, ticket: Ticket, message: str, acto
 @login_required
 def mark_all_notifications_read():
     try:
-        q = Notification.query
-        if getattr(current_user, 'role', None) != 'admin':
-            q = q.filter_by(user_id=current_user.id)
+        q = Notification.query.filter_by(user_id=current_user.id)
         for n in q.filter_by(is_read=False).all():
             n.is_read = True
         db.session.commit()
         flash('Notifications marked as read.', 'success')
     except Exception as e:
         print(f"[warn] mark_all_notifications_read failed: {e}")
-    return redirect(url_for('list_tickets'))
+    # Return user to the same page/dropdown context when possible
+    return redirect(request.referrer or url_for('list_tickets'))
+
+
+# ---- Notifications UI ----
+@app.route('/notifications')
+@login_required
+def notifications_list():
+    """List notifications for the current user with pagination.
+    The bell dropdown only shows unread; this page can show unread or all.
+    """
+    try:
+        status = (request.args.get('status') or 'unread').strip().lower()
+        page = int((request.args.get('page') or '1').strip() or '1')
+        per_page = 20
+    except Exception:
+        status = 'unread'
+        page = 1
+        per_page = 20
+
+    base_q = Notification.query.filter_by(user_id=current_user.id)
+    if status == 'all':
+        q = base_q
+    else:
+        q = base_q.filter_by(is_read=False)
+
+    total = q.count()
+    pages = (total + per_page - 1) // per_page if per_page else 1
+    items = (
+        q.order_by(Notification.created_at.desc())
+         .offset((page - 1) * per_page)
+         .limit(per_page)
+         .all()
+    )
+
+    return render_template(
+        'notifications.html',
+        items=items,
+        status=status,
+        page=page,
+        pages=pages,
+        total=total,
+    )
+
+
+@app.route('/notifications/<int:nid>/read', methods=['POST'])
+@login_required
+def mark_notification_read(nid: int):
+    """Mark a single notification as read if it belongs to the current user."""
+    try:
+        n = Notification.query.get_or_404(nid)
+        if n.user_id == current_user.id:
+            n.is_read = True
+            db.session.commit()
+            flash('Notification marked as read.', 'success')
+    except Exception as e:
+        print(f"[warn] mark_notification_read failed: {e}")
+    return redirect(request.referrer or url_for('notifications_list'))
+
+
+@app.route('/notifications/<int:nid>/go')
+@login_required
+def go_notification(nid: int):
+    """Open a notification target (ticket) and mark it read for the current user."""
+    try:
+        n = Notification.query.get_or_404(nid)
+        if n.user_id == current_user.id and not n.is_read:
+            n.is_read = True
+            db.session.commit()
+        if n.ticket_id:
+            return redirect(url_for('ticket_detail', ticket_id=n.ticket_id))
+    except Exception as e:
+        print(f"[warn] go_notification failed: {e}")
+    return redirect(url_for('notifications_list'))
 
 
 def notify_resolved(ticket: Ticket) -> None:
