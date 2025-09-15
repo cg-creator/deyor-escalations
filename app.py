@@ -730,6 +730,11 @@ def delete_ticket(ticket_id: int):
         db.session.execute(text("DELETE FROM ticket_assignees WHERE ticket_id = :tid"), {"tid": t.id})
     except Exception as e:
         print(f"[warn] failed to clean ticket_assignees for ticket {t.id}: {e}")
+    # Clean up notifications referencing this ticket to avoid FK errors
+    try:
+        db.session.execute(text("DELETE FROM notifications WHERE ticket_id = :tid"), {"tid": t.id})
+    except Exception as e:
+        print(f"[warn] failed to delete notifications for ticket {t.id}: {e}")
     db.session.delete(t)
     db.session.commit()
     flash('Ticket deleted.', 'success')
@@ -1177,6 +1182,21 @@ def delete_user(user_id: int):
         db.session.execute(text("DELETE FROM ticket_assignees WHERE user_id = :uid"), {'uid': u.id})
     except Exception as e:
         print(f"[warn] failed to clean ticket_assignees for user {u.id}: {e}")
+    # Nullify lead_assignee_id on tickets where this user is the lead to avoid FK violations
+    try:
+        db.session.execute(text("UPDATE tickets SET lead_assignee_id = NULL WHERE lead_assignee_id = :uid"), {'uid': u.id})
+    except Exception as e:
+        print(f"[warn] failed to nullify lead_assignee on tickets for user {u.id}: {e}")
+    # Delete notifications that belong to this user
+    try:
+        db.session.execute(text("DELETE FROM notifications WHERE user_id = :uid"), {'uid': u.id})
+    except Exception as e:
+        print(f"[warn] failed to delete notifications for user {u.id}: {e}")
+    # Nullify actor_id in notifications where this user was the actor
+    try:
+        db.session.execute(text("UPDATE notifications SET actor_id = NULL WHERE actor_id = :uid"), {'uid': u.id})
+    except Exception as e:
+        print(f"[warn] failed to nullify actor_id in notifications for user {u.id}: {e}")
     db.session.delete(u)
     db.session.commit()
     flash('User deleted.', 'success')
