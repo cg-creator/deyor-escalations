@@ -2316,6 +2316,7 @@ def kyc_external_form(token):
         form_data = {
             'full_name': request.form.get('full_name', '').strip(),
             'gender': request.form.get('gender', '').strip(),
+            'age': request.form.get('age', '').strip(),
             'phone': request.form.get('phone', '').strip(),
             'email': request.form.get('email', '').strip(),
             'nationality': request.form.get('nationality', '').strip(),
@@ -2329,6 +2330,10 @@ def kyc_external_form(token):
             'emergency_phone': request.form.get('emergency_phone', '').strip(),
             'emergency_relation': request.form.get('emergency_relation', '').strip(),
             'hear_about': request.form.get('hear_about', '').strip(),
+            'arrival_mode': request.form.get('arrival_mode', '').strip(),
+            'arrival_time': request.form.get('arrival_time', '').strip(),
+            'departure_mode': request.form.get('departure_mode', '').strip(),
+            'departure_time': request.form.get('departure_time', '').strip(),
         }
         
         # Handle file uploads based on trip type
