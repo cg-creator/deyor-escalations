@@ -1678,8 +1678,12 @@ def public_submit():
 # ==================== KYC ROUTES ====================
 
 # Ensure uploads directory exists
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'kyc')
+# Use UPLOAD_PATH env var for Render persistent disk, fallback to local uploads for development
+UPLOAD_FOLDER = os.environ.get('UPLOAD_PATH') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Ensure kyc subdirectory exists for storing files
+kyc_folder = os.path.join(UPLOAD_FOLDER, 'kyc')
+os.makedirs(kyc_folder, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
@@ -1717,7 +1721,10 @@ def save_uploaded_file(file, prefix='', allowed_exts=None):
         from werkzeug.utils import secure_filename
         ext = secure_filename(file.filename).rsplit('.', 1)[1].lower()
         filename = f"{prefix}{generate_token(16)}.{ext}"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        # Save to kyc subfolder within UPLOAD_FOLDER
+        kyc_path = os.path.join(UPLOAD_FOLDER, 'kyc')
+        os.makedirs(kyc_path, exist_ok=True)
+        filepath = os.path.join(kyc_path, filename)
         file.save(filepath)
         return os.path.join('uploads', 'kyc', filename)
     return None
@@ -3100,10 +3107,26 @@ Deyor System
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    """Serve uploaded files securely."""
-    from flask import send_from_directory
-    upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-    return send_from_directory(upload_dir, filename)
+    """Serve uploaded files securely from Render disk or local uploads."""
+    from flask import send_from_directory, abort
+    import os
+    
+    # Try Render persistent disk first (UPLOAD_PATH env var or default)
+    render_upload_dir = os.environ.get('UPLOAD_PATH') or '/opt/render/project/src/uploads'
+    local_upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+    
+    # Try Render disk location first
+    full_render_path = os.path.join(render_upload_dir, filename)
+    if os.path.exists(full_render_path):
+        return send_from_directory(render_upload_dir, filename)
+    
+    # Fall back to local uploads for backwards compatibility
+    full_local_path = os.path.join(local_upload_dir, filename)
+    if os.path.exists(full_local_path):
+        return send_from_directory(local_upload_dir, filename)
+    
+    # File not found in either location
+    abort(404)
 
 
 def create_kyc_notifications(customer, event_type):

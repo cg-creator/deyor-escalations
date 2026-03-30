@@ -14,6 +14,10 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     healthCheckPath: /health
+    disk:
+      name: deyor-uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -49,3 +53,5 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: UPLOAD_PATH
+        value: /opt/render/project/src/uploads
