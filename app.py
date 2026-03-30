@@ -1789,15 +1789,19 @@ def kyc_customers():
     status = request.args.get('status', '')
     trip_type = request.args.get('trip_type', '')
     search_query = request.args.get('search', '').strip()
+    booking_id_query = request.args.get('booking_id', '').strip()
     
     if current_user.role == 'admin':
         query = KYCCustomer.query
     else:
         query = KYCCustomer.query.filter_by(created_by_id=current_user.id)
     
-    # Apply search filter
+    # Apply search filter (name or booking_id)
     if search_query:
         query = query.filter(KYCCustomer.name.ilike(f'%{search_query}%'))
+    
+    if booking_id_query:
+        query = query.filter(KYCCustomer.booking_id.ilike(f'%{booking_id_query}%'))
     
     if status == 'kyc_pending':
         query = query.filter_by(kyc_submitted=False)
@@ -1817,7 +1821,7 @@ def kyc_customers():
     
     return render_template('kyc/customers.html', customers=customers, 
                          current_status=status, current_trip_type=trip_type,
-                         search_query=search_query)
+                         search_query=search_query, booking_id_query=booking_id_query)
 
 
 @app.route('/kyc/customers/new', methods=['GET', 'POST'])
