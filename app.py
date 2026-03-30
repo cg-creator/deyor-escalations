@@ -3116,33 +3116,31 @@ def uploaded_file(filename):
     import os
     
     # Debug logging
-    print(f"[debug] uploaded_file requested: {filename}")
-    print(f"[debug] UPLOAD_FOLDER: {UPLOAD_FOLDER}")
-    print(f"[debug] UPLOAD_PATH env: {os.environ.get('UPLOAD_PATH')}")
+    current_app.logger.info(f"[uploads] Requested: {filename}")
     
-    # Try Render persistent disk first (UPLOAD_PATH env var or default)
-    render_upload_dir = os.environ.get('UPLOAD_PATH') or '/opt/render/project/src/uploads'
-    local_upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+    # Possible upload directories to check (in order of priority)
+    possible_dirs = [
+        os.environ.get('UPLOAD_PATH'),  # Render persistent disk
+        '/opt/render/project/src/uploads',  # Default Render disk path
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads'),  # Local uploads
+    ]
     
-    print(f"[debug] render_upload_dir: {render_upload_dir}")
-    print(f"[debug] local_upload_dir: {local_upload_dir}")
+    # Filter out None values
+    possible_dirs = [d for d in possible_dirs if d]
     
-    # Try Render disk location first
-    full_render_path = os.path.join(render_upload_dir, filename)
-    print(f"[debug] Checking render path: {full_render_path} - exists: {os.path.exists(full_render_path)}")
-    if os.path.exists(full_render_path):
-        print(f"[debug] Serving from render disk: {full_render_path}")
-        return send_from_directory(render_upload_dir, filename)
+    current_app.logger.info(f"[uploads] Checking directories: {possible_dirs}")
     
-    # Fall back to local uploads for backwards compatibility
-    full_local_path = os.path.join(local_upload_dir, filename)
-    print(f"[debug] Checking local path: {full_local_path} - exists: {os.path.exists(full_local_path)}")
-    if os.path.exists(full_local_path):
-        print(f"[debug] Serving from local: {full_local_path}")
-        return send_from_directory(local_upload_dir, filename)
+    # Try each directory
+    for upload_dir in possible_dirs:
+        full_path = os.path.join(upload_dir, filename)
+        current_app.logger.info(f"[uploads] Checking: {full_path} - exists: {os.path.exists(full_path)}")
+        if os.path.exists(full_path):
+            current_app.logger.info(f"[uploads] Serving from: {upload_dir}")
+            return send_from_directory(upload_dir, filename)
     
-    # File not found in either location
-    print(f"[error] File not found: {filename}")
+    # File not found - log all attempted paths for debugging
+    current_app.logger.error(f"[uploads] File not found: {filename}")
+    current_app.logger.error(f"[uploads] Checked directories: {possible_dirs}")
     abort(404)
 
 
