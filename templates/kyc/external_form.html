@@ -1,0 +1,614 @@
+{% extends "base.html" %}
+
+{% block title %}Complete Your KYC - Deyor{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+  <div class="container mx-auto px-4 max-w-2xl">
+    <!-- Header - Airbnb Style -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-rose-100 to-rose-200 rounded-2xl mb-4 shadow-md">
+        <svg class="w-8 h-8 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      <h1 class="text-3xl font-bold text-gray-900 mb-2">Complete Your KYC</h1>
+      <p class="text-gray-600">Hi {{ customer.name }}, please complete your travel documentation below</p>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+      <!-- Progress -->
+      <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
+        <div class="flex items-center">
+          <div class="flex-1">
+            <div class="flex items-center">
+              <span class="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-bold shadow-md">1</span>
+              <span class="ml-3 text-sm font-semibold text-gray-900">KYC Form</span>
+            </div>
+          </div>
+          <div class="flex-1">
+            <div class="flex items-center opacity-50">
+              <span class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-300 text-gray-600 text-sm font-medium">2</span>
+              <span class="ml-3 text-sm font-medium text-gray-500">Indemnity</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <form action="{{ url_for('kyc_external_form', token=customer.kyc_token) }}" method="POST" enctype="multipart/form-data" class="p-8 space-y-8">
+        <!-- Trip Info Card -->
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+          <p class="text-sm text-blue-800">
+            <span class="font-semibold">Trip Type:</span> {{ customer.trip_type | title }}
+            {% if customer.booking_id %}
+            <span class="mx-2">|</span> <span class="font-semibold">Booking ID:</span> {{ customer.booking_id }}
+            {% endif %}
+          </p>
+        </div>
+
+        <!-- Personal Information -->
+        <div class="space-y-6">
+          <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-rose-500 to-pink-500 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-rose-200">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+              </svg>
+            </div>
+            Personal Information <span class="text-red-500 ml-1">*</span>
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label for="full_name" class="block text-sm font-medium text-gray-700 mb-1.5">Full Name <span class="text-red-500">*</span></label>
+              <input type="text" name="full_name" id="full_name" required 
+                     value="{{ customer.name }}"
+                     placeholder="Enter your full name as per ID"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="phone" class="block text-sm font-medium text-gray-700 mb-1.5">Phone Number <span class="text-red-500">*</span></label>
+              <input type="tel" name="phone" id="phone" required 
+                     value="{{ customer.phone }}"
+                     placeholder="Enter your phone number"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="email" class="block text-sm font-medium text-gray-700 mb-1.5">Email Address <span class="text-red-500">*</span></label>
+              <input type="email" name="email" id="email" required 
+                     value="{{ customer.email }}"
+                     placeholder="Enter your email address"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="nationality" class="block text-sm font-medium text-gray-700 mb-1.5">Nationality <span class="text-red-500">*</span></label>
+              <select name="nationality" id="nationality" required 
+                      class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 bg-white">
+                <option value="">Select Nationality</option>
+                <option value="Indian">Indian</option>
+                <option value="American">American</option>
+                <option value="British">British</option>
+                <option value="Canadian">Canadian</option>
+                <option value="Australian">Australian</option>
+                <option value="German">German</option>
+                <option value="French">French</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Chinese">Chinese</option>
+                <option value="Singaporean">Singaporean</option>
+                <option value="Malaysian">Malaysian</option>
+                <option value="Thai">Thai</option>
+                <option value="Nepalese">Nepalese</option>
+                <option value="Sri Lankan">Sri Lankan</option>
+                <option value="Bangladeshi">Bangladeshi</option>
+                <option value="Pakistani">Pakistani</option>
+                <option value="UAE">UAE</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="gender" class="block text-sm font-medium text-gray-700 mb-1.5">Gender <span class="text-red-500">*</span></label>
+              <select name="gender" id="gender" required 
+                      class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 bg-white">
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </div>
+            <div class="md:col-span-2">
+              <label for="address_line" class="block text-sm font-medium text-gray-700 mb-1.5">Address Line <span class="text-red-500">*</span></label>
+              <input type="text" name="address_line" id="address_line" required 
+                     placeholder="Enter your street address"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="city" class="block text-sm font-medium text-gray-700 mb-1.5">City <span class="text-red-500">*</span></label>
+              <input type="text" name="city" id="city" required 
+                     placeholder="Enter your city"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="state" class="block text-sm font-medium text-gray-700 mb-1.5">State/Province <span class="text-red-500">*</span></label>
+              <select name="state" id="state" required disabled
+                      class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
+                <option value="">Select State</option>
+              </select>
+            </div>
+            <div>
+              <label for="pincode" class="block text-sm font-medium text-gray-700 mb-1.5">Pincode/ZIP <span class="text-red-500">*</span></label>
+              <input type="text" name="pincode" id="pincode" required 
+                     placeholder="Enter pincode or ZIP"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+          </div>
+        </div>
+
+        <!-- Professional Details - ALL MANDATORY -->
+        <div class="space-y-6 pt-4 border-t border-gray-100">
+          <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-blue-200">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            Professional Details <span class="text-red-500 ml-1">*</span>
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label for="company_name" class="block text-sm font-medium text-gray-700 mb-1.5">Company Name <span class="text-red-500">*</span></label>
+              <input type="text" name="company_name" id="company_name" required 
+                     placeholder="Enter your company name"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="designation" class="block text-sm font-medium text-gray-700 mb-1.5">Designation <span class="text-red-500">*</span></label>
+              <input type="text" name="designation" id="designation" required 
+                     placeholder="e.g., Software Engineer, Manager"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+          </div>
+        </div>
+
+        <!-- Emergency Contact -->
+        <div class="space-y-6 pt-4 border-t border-gray-100">
+          <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-emerald-200">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/>
+              </svg>
+            </div>
+            Emergency Contact <span class="text-red-500 ml-1">*</span>
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div>
+              <label for="emergency_name" class="block text-sm font-medium text-gray-700 mb-1.5">Contact Name <span class="text-red-500">*</span></label>
+              <input type="text" name="emergency_name" id="emergency_name" required 
+                     placeholder="Emergency contact name"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="emergency_phone" class="block text-sm font-medium text-gray-700 mb-1.5">Contact Number <span class="text-red-500">*</span></label>
+              <input type="tel" name="emergency_phone" id="emergency_phone" required 
+                     placeholder="Emergency contact phone"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+            <div>
+              <label for="emergency_relation" class="block text-sm font-medium text-gray-700 mb-1.5">Relationship <span class="text-red-500">*</span></label>
+              <input type="text" name="emergency_relation" id="emergency_relation" required 
+                     placeholder="e.g., Father, Mother, Spouse"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+            </div>
+          </div>
+        </div>
+
+        <!-- How did you hear about us - MANDATORY -->
+        <div class="pt-4 border-t border-gray-100">
+          <div>
+            <label for="hear_about" class="block text-sm font-medium text-gray-700 mb-1.5">How did you hear about us? <span class="text-red-500">*</span></label>
+            <input type="text" name="hear_about" id="hear_about" required
+                   placeholder="e.g., Google, Friend, Instagram, Facebook, Referral"
+                   class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400">
+          </div>
+        </div>
+
+        <!-- ID Proof Upload -->
+        <div class="space-y-6 pt-4 border-t border-gray-100">
+          <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-rose-500 to-pink-500 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-rose-200">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3 3 0 01-3 3m5-3a3 3 0 013 3m-3-3h3"/>
+              </svg>
+            </div>
+            ID Proof Upload <span class="text-red-500 ml-1">*</span>
+          </h3>
+          
+          {% if is_international %}
+          <!-- International: Passport + PAN -->
+          <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+            <div class="flex items-center mb-5">
+              <div class="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center mr-4 shadow-lg shadow-blue-200">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+                </svg>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-900 text-lg">International Trip Documents</p>
+                <p class="text-sm text-gray-500">Upload Passport and PAN Card (all sides)</p>
+              </div>
+            </div>
+            
+            <!-- Passport Upload -->
+            <div class="bg-white rounded-xl border border-blue-100 p-5 mb-4">
+              <div class="flex items-center mb-4">
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 text-sm font-bold mr-3">1</span>
+                <span class="font-medium text-gray-900">Passport</span>
+                <span class="ml-2 text-xs text-gray-500">(Front & Back)</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="file-upload-box">
+                  <input type="file" name="passport_front" id="passport_front" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="passport_front" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-blue-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-blue-600 font-medium">Passport Front</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-blue-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+                <div class="file-upload-box">
+                  <input type="file" name="passport_back" id="passport_back" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="passport_back" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-blue-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-blue-600 font-medium">Passport Back</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-blue-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- PAN Upload -->
+            <div class="bg-white rounded-xl border border-blue-100 p-5">
+              <div class="flex items-center mb-4">
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 text-sm font-bold mr-3">2</span>
+                <span class="font-medium text-gray-900">PAN Card</span>
+                <span class="ml-2 text-xs text-gray-500">(Front & Back)</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="file-upload-box">
+                  <input type="file" name="pan_front" id="pan_front" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="pan_front" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-blue-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-blue-600 font-medium">PAN Front</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-blue-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+                <div class="file-upload-box">
+                  <input type="file" name="pan_back" id="pan_back" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="pan_back" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-blue-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-blue-600 font-medium">PAN Back</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-blue-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% else %}
+          <!-- Domestic: Aadhaar/PAN + DL -->
+          <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-6">
+            <div class="flex items-center mb-5">
+              <div class="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center mr-4 shadow-lg shadow-emerald-200">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-900 text-lg">Domestic Trip Documents</p>
+                <p class="text-sm text-gray-500">Upload Aadhaar/PAN + Driving License (all sides)</p>
+              </div>
+            </div>
+            
+            <!-- ID Proof Upload -->
+            <div class="bg-white rounded-xl border border-emerald-100 p-5 mb-4">
+              <div class="flex items-center mb-4">
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 text-sm font-bold mr-3">1</span>
+                <span class="font-medium text-gray-900">Aadhaar or PAN Card</span>
+                <span class="ml-2 text-xs text-gray-500">(Front & Back)</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="file-upload-box">
+                  <input type="file" name="id_proof_front" id="id_proof_front" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="id_proof_front" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-emerald-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-emerald-600 font-medium">ID Front</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-emerald-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+                <div class="file-upload-box">
+                  <input type="file" name="id_proof_back" id="id_proof_back" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="id_proof_back" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-emerald-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-emerald-600 font-medium">ID Back</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-emerald-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- DL Upload -->
+            <div class="bg-white rounded-xl border border-emerald-100 p-5">
+              <div class="flex items-center mb-4">
+                <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 text-sm font-bold mr-3">2</span>
+                <span class="font-medium text-gray-900">Driving License</span>
+                <span class="ml-2 text-xs text-gray-500">(Front & Back)</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="file-upload-box">
+                  <input type="file" name="dl_front" id="dl_front" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="dl_front" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-emerald-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-emerald-600 font-medium">DL Front</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-emerald-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+                <div class="file-upload-box">
+                  <input type="file" name="dl_back" id="dl_back" accept=".jpg,.jpeg,.png,.pdf" required 
+                         data-max-size="2097152"
+                         class="hidden file-input">
+                  <label for="dl_back" class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-all group">
+                    <div class="flex flex-col items-center justify-center pt-4 pb-4">
+                      <svg class="w-8 h-8 text-gray-400 group-hover:text-emerald-500 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                      </svg>
+                      <p class="text-sm text-gray-500 group-hover:text-emerald-600 font-medium">DL Back</p>
+                      <p class="text-xs text-gray-400 mt-1">Click to upload</p>
+                    </div>
+                  </label>
+                  <p class="file-name text-xs text-emerald-600 mt-2 text-center font-medium hidden"></p>
+                  <p class="file-error text-xs text-red-500 mt-1 text-center hidden"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          
+          <!-- File Size Info -->
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start">
+            <svg class="w-5 h-5 text-amber-500 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <p class="text-sm text-amber-800 font-medium">File Requirements</p>
+              <p class="text-xs text-amber-700 mt-1">JPG, PNG or PDF. Maximum 2MB per file.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit Button - Airbnb Style -->
+        <div class="pt-6 border-t border-gray-100">
+          <button type="submit" class="w-full inline-flex items-center justify-center px-8 py-4 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 transition-all hover:shadow-xl transform hover:-translate-y-0.5 text-lg">
+            Submit KYC
+            <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+            </svg>
+          </button>
+          <p class="text-center text-sm text-gray-500 mt-4 flex items-center justify-center">
+            <svg class="w-4 h-4 mr-1 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+            Your information is securely stored and encrypted.
+          </p>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// File upload validation
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+
+document.querySelectorAll('.file-input').forEach(input => {
+  input.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    const box = this.closest('.file-upload-box');
+    const fileNameEl = box.querySelector('.file-name');
+    const errorEl = box.querySelector('.file-error');
+    const label = box.querySelector('label');
+    
+    // Reset
+    fileNameEl.classList.add('hidden');
+    errorEl.classList.add('hidden');
+    label.classList.remove('border-red-400', 'bg-red-50', 'border-green-400', 'bg-green-50');
+    
+    if (!file) return;
+    
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      errorEl.textContent = 'File too large! Max 2MB allowed.';
+      errorEl.classList.remove('hidden');
+      label.classList.add('border-red-400', 'bg-red-50');
+      this.value = ''; // Clear the file
+      return;
+    }
+    
+    // Valid file
+    fileNameEl.textContent = file.name;
+    fileNameEl.classList.remove('hidden');
+    label.classList.add('border-green-400', 'bg-green-50');
+    
+    // Update label content to show success
+    const labelContent = label.querySelector('div');
+    if (labelContent) {
+      labelContent.innerHTML = `
+        <svg class="w-8 h-8 text-green-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <p class="text-sm text-green-600 font-medium">File Selected</p>
+        <p class="text-xs text-gray-500 mt-1">${(file.size / 1024).toFixed(1)} KB</p>
+      `;
+    }
+  });
+});
+
+// Form validation before submit
+document.querySelector('form').addEventListener('submit', function(e) {
+  const fileInputs = document.querySelectorAll('.file-input');
+  let hasError = false;
+  
+  fileInputs.forEach(input => {
+    if (input.files[0] && input.files[0].size > MAX_FILE_SIZE) {
+      hasError = true;
+    }
+  });
+  
+  if (hasError) {
+    e.preventDefault();
+    alert('One or more files exceed the 2MB limit. Please check and try again.');
+  }
+});
+
+// Dynamic State Dropdown based on Nationality
+const stateData = {
+  'Indian': [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana',
+    'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+    'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+    'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu & Kashmir',
+    'Ladakh', 'Puducherry', 'Andaman & Nicobar', 'Chandigarh', 'Dadra & Nagar Haveli', 'Daman & Diu',
+    'Lakshadweep'
+  ],
+  'American': [
+    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
+    'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
+    'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',
+    'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
+    'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',
+    'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+    'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming', 'District of Columbia'
+  ],
+  'British': [
+    'England', 'Scotland', 'Wales', 'Northern Ireland'
+  ],
+  'Canadian': [
+    'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador',
+    'Nova Scotia', 'Ontario', 'Prince Edward Island', 'Quebec', 'Saskatchewan',
+    'Northwest Territories', 'Nunavut', 'Yukon'
+  ],
+  'Australian': [
+    'New South Wales', 'Victoria', 'Queensland', 'Western Australia', 'South Australia',
+    'Tasmania', 'Australian Capital Territory', 'Northern Territory'
+  ],
+  'German': ['Berlin', 'Bavaria', 'Hamburg', 'Hesse', 'Saxony', 'Other'],
+  'French': ['Paris', 'Lyon', 'Marseille', 'Other'],
+  'Japanese': ['Tokyo', 'Osaka', 'Kyoto', 'Other'],
+  'Chinese': ['Beijing', 'Shanghai', 'Guangdong', 'Other'],
+  'Singaporean': ['Singapore'],
+  'Malaysian': ['Kuala Lumpur', 'Selangor', 'Penang', 'Johor', 'Other'],
+  'Thai': ['Bangkok', 'Chiang Mai', 'Phuket', 'Other'],
+  'Nepalese': ['Bagmati', 'Gandaki', 'Koshi', 'Other'],
+  'Sri Lankan': ['Western', 'Central', 'Southern', 'Northern', 'Eastern', 'Other'],
+  'Bangladeshi': ['Dhaka', 'Chittagong', 'Khulna', 'Other'],
+  'Pakistani': ['Punjab', 'Sindh', 'KPK', 'Balochistan', 'Other'],
+  'UAE': ['Dubai', 'Abu Dhabi', 'Sharjah', 'Other'],
+  'Other': ['Other']
+};
+
+const nationalitySelect = document.getElementById('nationality');
+const stateSelect = document.getElementById('state');
+
+if (nationalitySelect && stateSelect) {
+  // Store original options
+  const stateOptions = stateSelect.innerHTML;
+  
+  nationalitySelect.addEventListener('change', function() {
+    const nationality = this.value;
+    const states = stateData[nationality] || ['Other'];
+    
+    // Clear current options
+    stateSelect.innerHTML = '<option value="">Select State</option>';
+    
+    // Add new options
+    states.forEach(state => {
+      const option = document.createElement('option');
+      option.value = state;
+      option.textContent = state;
+      stateSelect.appendChild(option);
+    });
+    
+    // Enable the select
+    stateSelect.disabled = false;
+  });
+  
+  // Initialize if nationality is already selected
+  if (nationalitySelect.value && stateData[nationalitySelect.value]) {
+    const nationality = nationalitySelect.value;
+    const states = stateData[nationality];
+    const currentState = stateSelect.value;
+    
+    stateSelect.innerHTML = '<option value="">Select State</option>';
+    states.forEach(state => {
+      const option = document.createElement('option');
+      option.value = state;
+      option.textContent = state;
+      if (state === currentState) option.selected = true;
+      stateSelect.appendChild(option);
+    });
+    stateSelect.disabled = false;
+  }
+}
+</script>
+{% endblock %}

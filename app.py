@@ -157,6 +157,148 @@ class AppMeta(db.Model):
     value = db.Column(db.String(200))
 
 
+# ==================== KYC MODULE ====================
+
+class KYCCustomer(db.Model):
+    __tablename__ = 'kyc_customers'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
+    trip_type = db.Column(db.String(20), nullable=False, default='domestic')  # 'domestic' or 'international'
+    trip_date = db.Column(db.Date)  # Trip start date for deadline tracking
+    booking_id = db.Column(db.String(80))
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    # KYC completion tracking
+    kyc_submitted = db.Column(db.Boolean, default=False, nullable=False)
+    kyc_submitted_at = db.Column(db.DateTime)
+    
+    # Indemnity signing tracking
+    indemnity_signed = db.Column(db.Boolean, default=False, nullable=False)
+    indemnity_signed_at = db.Column(db.DateTime)
+    
+    # Unique tokens for external access
+    kyc_token = db.Column(db.String(64), unique=True)
+    indemnity_token = db.Column(db.String(64), unique=True)
+    
+    created_by = db.relationship('User', foreign_keys=[created_by_id], lazy=True)
+    submission = db.relationship('KYCSubmission', backref='customer', uselist=False, lazy=True)
+    
+    def get_days_until_trip(self):
+        """Calculate days remaining until trip date."""
+        if not self.trip_date:
+            return None
+        from datetime import date
+        today = date.today()
+        if isinstance(self.trip_date, datetime):
+            trip_date = self.trip_date.date()
+        else:
+            trip_date = self.trip_date
+        return (trip_date - today).days
+    
+    def is_trip_started(self):
+        """Check if trip date has passed."""
+        if not self.trip_date:
+            return False
+        from datetime import date
+        today = date.today()
+        if isinstance(self.trip_date, datetime):
+            trip_date = self.trip_date.date()
+        else:
+            trip_date = self.trip_date
+        return trip_date < today
+    
+    def needs_urgent_attention(self):
+        """Check if customer needs urgent attention (trip within 7 days and KYC not done)."""
+        days = self.get_days_until_trip()
+        if days is None:
+            return False
+        return days <= 7 and (not self.kyc_submitted or not self.indemnity_signed)
+
+
+class KYCForm(db.Model):
+    __tablename__ = 'kyc_forms'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    # JSON field storing form fields configuration
+    fields_config = db.Column(db.Text, default='[]')
+
+
+class KYCSubmission(db.Model):
+    __tablename__ = 'kyc_submissions'
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('kyc_customers.id'), nullable=False, unique=True)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    # JSON field storing submitted data
+    form_data = db.Column(db.Text, default='{}')
+    
+    # Document paths (stored as JSON: {"passport_front": "path", "passport_back": "path", ...})
+    document_paths = db.Column(db.Text, default='{}')
+
+
+class IndemnityTemplate(db.Model):
+    __tablename__ = 'indemnity_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    
+    # T&Cs content (HTML/text) - legacy field, now using PDF
+    terms_content = db.Column(db.Text, default='')
+    
+    # T&Cs PDF file path (new)
+    terms_pdf_path = db.Column(db.String(255))
+    
+    # Indemnity content (HTML/text) - legacy field
+    indemnity_content = db.Column(db.Text, default='')
+    
+    # Indemnity PDF file path
+    pdf_path = db.Column(db.String(255))
+    
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    
+    uploaded_by = db.relationship('User', foreign_keys=[uploaded_by_id], lazy=True)
+
+
+class IndemnityRequest(db.Model):
+    __tablename__ = 'indemnity_requests'
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('kyc_customers.id'), nullable=False)
+    template_id = db.Column(db.Integer, db.ForeignKey('indemnity_templates.id'), nullable=False)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    sent_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    
+    # T&C acceptance tracking
+    terms_accepted_at = db.Column(db.DateTime)
+    terms_accepted_location = db.Column(db.String(100))
+    
+    # Signature data
+    signed_at = db.Column(db.DateTime)
+    signature_data = db.Column(db.Text)
+    ip_address = db.Column(db.String(45))
+    user_agent = db.Column(db.Text)
+    
+    customer = db.relationship('KYCCustomer', foreign_keys=[customer_id], lazy=True)
+    template = db.relationship('IndemnityTemplate', foreign_keys=[template_id], lazy=True)
+    sent_by = db.relationship('User', foreign_keys=[sent_by_id], lazy=True)
+
+
+def generate_token(length=32):
+    """Generate a random token for secure external links."""
+    import secrets
+    return secrets.token_urlsafe(length)
+
+
+# ==================== END KYC MODULE ====================
+
+
 def ensure_schema():
     """Minimal migration to add missing columns when using SQLite."""
     try:
@@ -232,6 +374,31 @@ def ensure_schema():
                 conn.commit()
             except Exception:
                 pass
+            
+            # Add trip_date column to kyc_customers table
+            kyc_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(kyc_customers)"))]
+            if 'trip_date' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN trip_date DATE"))
+                conn.commit()
+                print("[info] Added trip_date column to kyc_customers table")
+            
+            # Add terms_pdf_path column to indemnity_templates table
+            template_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(indemnity_templates)"))]
+            if 'terms_pdf_path' not in template_cols:
+                conn.execute(text("ALTER TABLE indemnity_templates ADD COLUMN terms_pdf_path VARCHAR(255)"))
+                conn.commit()
+                print("[info] Added terms_pdf_path column to indemnity_templates table")
+            
+            # Add T&C acceptance tracking columns to indemnity_requests table
+            request_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(indemnity_requests)"))]
+            if 'terms_accepted_at' not in request_cols:
+                conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN terms_accepted_at DATETIME"))
+                conn.commit()
+                print("[info] Added terms_accepted_at column to indemnity_requests table")
+            if 'terms_accepted_location' not in request_cols:
+                conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN terms_accepted_location VARCHAR(100)"))
+                conn.commit()
+                print("[info] Added terms_accepted_location column to indemnity_requests table")
     except Exception as e:
         print(f"[warn] ensure_schema failed: {e}")
 
@@ -242,7 +409,7 @@ with app.app_context():
     # One-time IST migration (optional, guarded by env var and meta flag)
     try:
         do_ist = (os.getenv('APPLY_IST_MIGRATION') or '').strip().lower() in {'1','true','yes','on'}
-        done = AppMeta.query.get('ist_shift_done') is not None
+        done = db.session.get(AppMeta, 'ist_shift_done') is not None
         if do_ist and not done:
             shift = timedelta(hours=5, minutes=30)
             # Shift tickets
@@ -1504,6 +1671,1572 @@ def public_submit():
         return render_template('public_thanks.html', ticket=t)
 
     return render_template('public_submit.html', CAPTCHA_PROVIDER=provider, CAPTCHA_SITE_KEY=site_key, CAPTCHA_SECRET=secret)
+
+
+# ==================== KYC ROUTES ====================
+
+# Ensure uploads directory exists
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'kyc')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx'}
+
+def allowed_file(filename, allowed_exts=None):
+    """Check if file extension is allowed."""
+    if allowed_exts is None:
+        allowed_exts = ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_exts
+
+
+def allowed_document_file(filename):
+    """Check if file is a valid document (PDF or Word)."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'pdf', 'doc', 'docx'}
+
+
+def allowed_image_file(filename):
+    """Check if file is a valid image."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
+
+
+def save_uploaded_file(file, prefix='', allowed_exts=None):
+    """Save uploaded file and return relative path.
+    
+    Args:
+        file: The uploaded file object
+        prefix: Prefix for the filename
+        allowed_exts: Set of allowed extensions (defaults to ALLOWED_EXTENSIONS)
+    """
+    if allowed_exts is None:
+        allowed_exts = ALLOWED_EXTENSIONS
+    
+    if file and allowed_file(file.filename, allowed_exts):
+        from werkzeug.utils import secure_filename
+        ext = secure_filename(file.filename).rsplit('.', 1)[1].lower()
+        filename = f"{prefix}{generate_token(16)}.{ext}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        return os.path.join('uploads', 'kyc', filename)
+    return None
+
+
+def save_document_file(file, prefix=''):
+    """Save PDF or Word document file."""
+    return save_uploaded_file(file, prefix, {'pdf', 'doc', 'docx'})
+
+
+@app.route('/kyc')
+@login_required
+def kyc_dashboard():
+    """Main KYC dashboard with overview stats and alerts."""
+    # Get all customers created by current user (or all for admin)
+    if current_user.role == 'admin':
+        customers = KYCCustomer.query.order_by(KYCCustomer.created_at.desc()).all()
+    else:
+        customers = KYCCustomer.query.filter_by(created_by_id=current_user.id).order_by(KYCCustomer.created_at.desc()).all()
+    
+    # Calculate stats
+    total = len(customers)
+    kyc_completed = sum(1 for c in customers if c.kyc_submitted)
+    indemnity_signed = sum(1 for c in customers if c.indemnity_signed)
+    pending_kyc = total - kyc_completed
+    pending_indemnity = total - indemnity_signed
+    
+    # Get active indemnity template
+    active_template = IndemnityTemplate.query.filter_by(is_active=True).first()
+    
+    # Generate alerts based on trip dates
+    alerts = []
+    urgent_customers = []
+    critical_customers = []
+    
+    for customer in customers:
+        days = customer.get_days_until_trip()
+        if days is not None:
+            # Critical: Trip started but KYC not done
+            if customer.is_trip_started() and (not customer.kyc_submitted or not customer.indemnity_signed):
+                critical_customers.append(customer)
+            # Urgent: Trip within 7 days and KYC not done
+            elif days <= 7 and days >= 0 and (not customer.kyc_submitted or not customer.indemnity_signed):
+                urgent_customers.append(customer)
+    
+    return render_template('kyc/dashboard.html',
+                         customers=customers,
+                         total=total,
+                         kyc_completed=kyc_completed,
+                         indemnity_signed=indemnity_signed,
+                         pending_kyc=pending_kyc,
+                         pending_indemnity=pending_indemnity,
+                         active_template=active_template,
+                         urgent_customers=urgent_customers,
+                         critical_customers=critical_customers)
+
+
+@app.route('/kyc/customers')
+@login_required
+def kyc_customers():
+    """List all KYC customers with filtering and search."""
+    status = request.args.get('status', '')
+    trip_type = request.args.get('trip_type', '')
+    search_query = request.args.get('search', '').strip()
+    
+    if current_user.role == 'admin':
+        query = KYCCustomer.query
+    else:
+        query = KYCCustomer.query.filter_by(created_by_id=current_user.id)
+    
+    # Apply search filter
+    if search_query:
+        query = query.filter(KYCCustomer.name.ilike(f'%{search_query}%'))
+    
+    if status == 'kyc_pending':
+        query = query.filter_by(kyc_submitted=False)
+    elif status == 'kyc_completed':
+        query = query.filter_by(kyc_submitted=True)
+    elif status == 'indemnity_pending':
+        query = query.filter_by(indemnity_signed=False)
+    elif status == 'indemnity_signed':
+        query = query.filter_by(indemnity_signed=True)
+    elif status == 'fully_complete':
+        query = query.filter_by(kyc_submitted=True, indemnity_signed=True)
+    
+    if trip_type in ['domestic', 'international']:
+        query = query.filter_by(trip_type=trip_type)
+    
+    customers = query.order_by(KYCCustomer.created_at.desc()).all()
+    
+    return render_template('kyc/customers.html', customers=customers, 
+                         current_status=status, current_trip_type=trip_type,
+                         search_query=search_query)
+
+
+@app.route('/kyc/customers/new', methods=['GET', 'POST'])
+@login_required
+def kyc_customer_new():
+    """Add a single KYC customer."""
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        phone = request.form.get('phone', '').strip()
+        trip_type = request.form.get('trip_type', 'domestic')
+        trip_date_str = request.form.get('trip_date', '').strip()
+        booking_id = request.form.get('booking_id', '').strip()
+        
+        if not name or not email or not phone:
+            flash('Name, email and phone are required.', 'danger')
+            return redirect(url_for('kyc_customer_new'))
+        
+        # Parse trip date (DD-MM-YYYY format)
+        trip_date = None
+        if trip_date_str:
+            try:
+                trip_date = datetime.strptime(trip_date_str, '%d-%m-%Y').date()
+            except ValueError:
+                flash('Invalid trip date format. Please use DD-MM-YYYY.', 'danger')
+                return redirect(url_for('kyc_customer_new'))
+        
+        customer = KYCCustomer(
+            name=name,
+            email=email,
+            phone=phone,
+            trip_type=trip_type,
+            trip_date=trip_date,
+            booking_id=booking_id,
+            created_by_id=current_user.id,
+            kyc_token=generate_token(),
+            indemnity_token=generate_token()
+        )
+        db.session.add(customer)
+        db.session.commit()
+        
+        # Auto-send KYC email to customer
+        try:
+            template = IndemnityTemplate.query.filter_by(is_active=True).first()
+            if template:
+                send_kyc_email(customer, template)
+                flash(f'Customer {name} added and KYC email sent successfully.', 'success')
+            else:
+                flash(f'Customer {name} added successfully. No active template found - email not sent.', 'warning')
+        except Exception as e:
+            flash(f'Customer {name} added but failed to send email: {str(e)}', 'warning')
+            print(f"[error] Failed to auto-send KYC email: {e}")
+        
+        return redirect(url_for('kyc_customers'))
+    
+    return render_template('kyc/customer_form.html')
+
+
+@app.route('/kyc/customers/bulk', methods=['GET', 'POST'])
+@login_required
+def kyc_customers_bulk():
+    """Bulk upload KYC customers via CSV/Excel."""
+    if request.method == 'POST':
+        import csv
+        import io
+        
+        csv_file = request.files.get('csv_file')
+        if not csv_file:
+            flash('Please upload a CSV file.', 'danger')
+            return redirect(url_for('kyc_customers_bulk'))
+        
+        try:
+            stream = io.StringIO(csv_file.stream.read().decode('utf-8'))
+            reader = csv.DictReader(stream)
+            
+            added = 0
+            errors = []
+            
+            for row in reader:
+                try:
+                    name = row.get('name', '').strip()
+                    email = row.get('email', '').strip()
+                    phone = row.get('phone', '').strip()
+                    trip_type = row.get('trip_type', 'domestic').strip()
+                    trip_date_str = row.get('trip_date', '').strip()
+                    booking_id = row.get('booking_id', '').strip()
+                    
+                    if not name or not email or not phone:
+                        errors.append(f"Missing required fields for row: {row}")
+                        continue
+                    
+                    # Parse trip date (DD-MM-YYYY format)
+                    trip_date = None
+                    if trip_date_str:
+                        try:
+                            trip_date = datetime.strptime(trip_date_str, '%d-%m-%Y').date()
+                        except ValueError:
+                            errors.append(f"Invalid trip date for {name}: {trip_date_str}. Use DD-MM-YYYY format.")
+                            continue
+                    
+                    customer = KYCCustomer(
+                        name=name,
+                        email=email,
+                        phone=phone,
+                        trip_type=trip_type if trip_type in ['domestic', 'international'] else 'domestic',
+                        trip_date=trip_date,
+                        booking_id=booking_id,
+                        created_by_id=current_user.id,
+                        kyc_token=generate_token(),
+                        indemnity_token=generate_token()
+                    )
+                    db.session.add(customer)
+                    added += 1
+                except Exception as e:
+                    errors.append(f"Error processing row {row}: {str(e)}")
+            
+            db.session.commit()
+            
+            # Auto-send KYC emails to all newly added customers
+            email_sent_count = 0
+            email_errors = []
+            try:
+                template = IndemnityTemplate.query.filter_by(is_active=True).first()
+                if template:
+                    # Get all customers that were just added
+                    from sqlalchemy import desc
+                    recently_added = KYCCustomer.query.filter(
+                        KYCCustomer.created_by_id == current_user.id
+                    ).order_by(desc(KYCCustomer.created_at)).limit(added).all()
+                    
+                    for customer in recently_added:
+                        try:
+                            send_kyc_email(customer, template)
+                            email_sent_count += 1
+                        except Exception as e:
+                            email_errors.append(f"Failed to send email to {customer.email}: {str(e)}")
+                else:
+                    flash(f'No active template found - emails not sent to {added} customers.', 'warning')
+            except Exception as e:
+                email_errors.append(f"Email sending error: {str(e)}")
+            
+            if added:
+                if email_sent_count == added:
+                    flash(f'Successfully added {added} customers and sent KYC emails to all.', 'success')
+                else:
+                    flash(f'Successfully added {added} customers. Emails sent to {email_sent_count} customers.', 'success')
+            if errors:
+                for err in errors[:5]:
+                    flash(err, 'warning')
+            if email_errors:
+                for err in email_errors[:3]:
+                    flash(err, 'warning')
+            
+            return redirect(url_for('kyc_customers'))
+            
+        except Exception as e:
+            flash(f'Error processing CSV: {str(e)}', 'danger')
+            return redirect(url_for('kyc_customers_bulk'))
+    
+    return render_template('kyc/customers_bulk.html')
+
+
+@app.route('/kyc/customers/<int:customer_id>/send', methods=['POST'])
+@login_required
+def kyc_customer_send(customer_id):
+    """Send KYC and indemnity request emails to a customer."""
+    customer = KYCCustomer.query.get_or_404(customer_id)
+    
+    # Check permission
+    if current_user.role != 'admin' and customer.created_by_id != current_user.id:
+        flash('You do not have permission to send emails for this customer.', 'danger')
+        return redirect(url_for('kyc_customers'))
+    
+    # Get active indemnity template
+    template = IndemnityTemplate.query.filter_by(is_active=True).first()
+    if not template:
+        flash('No active indemnity template found. Please upload one first.', 'danger')
+        return redirect(url_for('kyc_templates'))
+    
+    # Generate tokens if not present
+    if not customer.kyc_token:
+        customer.kyc_token = generate_token()
+    if not customer.indemnity_token:
+        customer.indemnity_token = generate_token()
+    db.session.commit()
+    
+    # Send email with both links
+    try:
+        send_kyc_email(customer, template)
+        flash(f'KYC request email sent to {customer.name} ({customer.email}).', 'success')
+    except Exception as e:
+        flash(f'Failed to send email: {str(e)}', 'danger')
+        print(f"[error] Failed to send KYC email: {e}")
+    
+    return redirect(url_for('kyc_customers'))
+
+
+def get_kyc_email_settings():
+    """Get KYC email settings from database or environment."""
+    # Try to get from AppMeta first
+    smtp_host = AppMeta.query.filter_by(key='kyc_smtp_host').first()
+    smtp_port = AppMeta.query.filter_by(key='kyc_smtp_port').first()
+    smtp_user = AppMeta.query.filter_by(key='kyc_smtp_user').first()
+    smtp_pass = AppMeta.query.filter_by(key='kyc_smtp_pass').first()
+    
+    settings = {
+        'smtp_host': smtp_host.value if smtp_host else os.getenv('SMTP_HOST', ''),
+        'smtp_port': int(smtp_port.value if smtp_port else os.getenv('SMTP_PORT', '587')),
+        'smtp_user': smtp_user.value if smtp_user else os.getenv('SMTP_USER', 'care@deyor.in'),
+        'smtp_pass': smtp_pass.value if smtp_pass else os.getenv('SMTP_PASS', ''),
+    }
+    return settings
+
+
+def send_kyc_email(customer, template):
+    """Send KYC and indemnity request email to customer using configured SMTP."""
+    settings = get_kyc_email_settings()
+    
+    kyc_url = url_for('kyc_external_form', token=customer.kyc_token, _external=True)
+    indemnity_url = url_for('kyc_external_indemnity', token=customer.indemnity_token, _external=True)
+    
+    # Format trip date
+    trip_date_str = customer.trip_date.strftime('%d-%m-%Y') if customer.trip_date else 'Not specified'
+    days_until = customer.get_days_until_trip()
+    days_text = f"({days_until} days from now)" if days_until is not None and days_until >= 0 else ""
+    
+    subject = "Complete Your KYC and Sign Required Documents - Deyor"
+    
+    # Warm, personalized email with 7-day requirement
+    body = f"""Dear {customer.name},
+
+Thank you for booking your {customer.trip_type.title()} trip with Deyor! We're excited to host you on an amazing adventure.
+
+📅 Trip Date: {trip_date_str} {days_text}
+
+📝 IMPORTANT - MANDATORY KYC COMPLETION
+To ensure a smooth travel experience, you MUST complete your KYC and sign the required documents at least 7 DAYS prior to your trip date.
+
+Failure to complete these documents within the 7-day window may result in cancellation of your booking without refund.
+
+Please complete the following steps:
+
+1️⃣ Complete your KYC form:
+   {kyc_url}
+
+2️⃣ Review and sign the Terms & Conditions and Indemnity Agreement:
+   {indemnity_url}
+
+Both steps are mandatory and must be completed within 7 days before your trip.
+
+If you have any questions or need assistance, please contact our support team:
+📧 care@deyor.in
+📞 +91 9870417123
+
+We look forward to hosting you!
+
+Best regards,
+Team Deyor
+https://deyor.in
+"""
+    
+    # Check if SMTP is configured
+    if not settings['smtp_host'] or not settings['smtp_user'] or not settings['smtp_pass']:
+        print("[warn] KYC SMTP not configured; email would have been sent to:", customer.email)
+        print("[info] Please configure SMTP settings at /kyc/settings/email")
+        return False
+    
+    try:
+        context = ssl.create_default_context(cafile=certifi.where())
+        with smtplib.SMTP(settings['smtp_host'], settings['smtp_port']) as server:
+            server.starttls(context=context)
+            server.login(settings['smtp_user'], settings['smtp_pass'])
+            
+            msg = MIMEText(body)
+            msg['Subject'] = subject
+            msg['From'] = settings['smtp_user']
+            msg['To'] = customer.email
+            
+            server.sendmail(settings['smtp_user'], [customer.email], msg.as_string())
+            return True
+    except Exception as e:
+        print(f"[error] Failed to send KYC email: {e}")
+        raise e
+
+
+@app.route('/kyc/templates')
+@login_required
+def kyc_templates():
+    """Manage indemnity and T&C templates."""
+    templates = IndemnityTemplate.query.order_by(IndemnityTemplate.uploaded_at.desc()).all()
+    return render_template('kyc/templates.html', templates=templates)
+
+
+@app.route('/kyc/templates/new', methods=['GET', 'POST'])
+@login_required
+def kyc_template_new():
+    """Upload new indemnity template with T&C and Indemnity PDFs."""
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        make_active = request.form.get('make_active') == 'on'
+        
+        # T&C PDF is now required
+        terms_pdf = request.files.get('terms_pdf')
+        if not terms_pdf or not terms_pdf.filename:
+            flash('T&C document (PDF or Word) is required.', 'danger')
+            return redirect(url_for('kyc_template_new'))
+        
+        # Indemnity PDF is required
+        indemnity_pdf = request.files.get('indemnity_pdf')
+        if not indemnity_pdf or not indemnity_pdf.filename:
+            flash('Indemnity document (PDF or Word) is required.', 'danger')
+            return redirect(url_for('kyc_template_new'))
+        
+        if not title:
+            flash('Title is required.', 'danger')
+            return redirect(url_for('kyc_template_new'))
+        
+        # Handle T&C PDF upload
+        terms_pdf_path = save_uploaded_file(terms_pdf, 'terms_')
+        if not terms_pdf_path:
+            flash('Failed to upload T&C document.', 'danger')
+            return redirect(url_for('kyc_template_new'))
+        
+        # Handle Indemnity PDF upload
+        indemnity_pdf_path = save_uploaded_file(indemnity_pdf, 'indemnity_')
+        if not indemnity_pdf_path:
+            flash('Failed to upload Indemnity document.', 'danger')
+            return redirect(url_for('kyc_template_new'))
+        
+        template = IndemnityTemplate(
+            title=title,
+            description=description,
+            terms_content='',  # Legacy field
+            terms_pdf_path=terms_pdf_path,
+            indemnity_content='',  # Legacy field
+            pdf_path=indemnity_pdf_path,
+            is_active=make_active,
+            uploaded_by_id=current_user.id
+        )
+        
+        # If making this active, deactivate others
+        if make_active:
+            IndemnityTemplate.query.update({'is_active': False})
+        
+        db.session.add(template)
+        db.session.commit()
+        
+        flash('Template uploaded successfully.', 'success')
+        return redirect(url_for('kyc_templates'))
+    
+    return render_template('kyc/template_form.html')
+
+
+@app.route('/kyc/templates/<int:template_id>/activate', methods=['POST'])
+@login_required
+def kyc_template_activate(template_id):
+    """Activate a specific template."""
+    template = IndemnityTemplate.query.get_or_404(template_id)
+    
+    # Deactivate all others
+    IndemnityTemplate.query.update({'is_active': False})
+    template.is_active = True
+    db.session.commit()
+    
+    flash(f'Template "{template.title}" is now active.', 'success')
+    return redirect(url_for('kyc_templates'))
+
+
+@app.route('/kyc/templates/<int:template_id>/delete', methods=['POST'])
+@login_required
+def kyc_template_delete(template_id):
+    """Delete a template."""
+    template = IndemnityTemplate.query.get_or_404(template_id)
+    
+    # Check if template is being used by any indemnity requests
+    used_count = IndemnityRequest.query.filter_by(template_id=template.id).count()
+    if used_count > 0:
+        flash(f'Cannot delete template "{template.title}" - it has been used in {used_count} customer request(s).', 'danger')
+        return redirect(url_for('kyc_templates'))
+    
+    try:
+        # Delete associated PDF files
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        if template.pdf_path:
+            pdf_path = os.path.join(base_dir, template.pdf_path) if not template.pdf_path.startswith('/') else template.pdf_path
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        if template.terms_pdf_path:
+            terms_path = os.path.join(base_dir, template.terms_pdf_path) if not template.terms_pdf_path.startswith('/') else template.terms_pdf_path
+            if os.path.exists(terms_path):
+                os.remove(terms_path)
+        
+        title = template.title
+        db.session.delete(template)
+        db.session.commit()
+        flash(f'Template "{title}" deleted successfully.', 'success')
+    except Exception as e:
+        flash(f'Failed to delete template: {str(e)}', 'danger')
+    
+    return redirect(url_for('kyc_templates'))
+
+
+@app.route('/kyc/form/builder')
+@login_required
+def kyc_form_builder():
+    """Build and configure the KYC form."""
+    import json
+    form = KYCForm.query.filter_by(is_active=True).first()
+    
+    if not form:
+        # Create default form if none exists
+        default_fields = [
+            {'name': 'full_name', 'label': 'Full Name (as per ID)', 'type': 'text', 'required': True},
+            {'name': 'gender', 'label': 'Gender', 'type': 'select', 'required': True,
+             'options': ['Male', 'Female', 'Other', 'Prefer not to say']},
+            {'name': 'dob', 'label': 'Date of Birth', 'type': 'date', 'required': True},
+            {'name': 'nationality', 'label': 'Nationality', 'type': 'select', 'required': True,
+             'options': ['Indian', 'American', 'British', 'Canadian', 'Australian', 'German', 'French', 'Japanese', 'Chinese', 'Singaporean', 'Malaysian', 'Thai', 'Nepalese', 'Sri Lankan', 'Bangladeshi', 'Pakistani', 'UAE', 'Other']},
+            {'name': 'address_line', 'label': 'Address Line', 'type': 'text', 'required': True},
+            {'name': 'city', 'label': 'City', 'type': 'text', 'required': True},
+            {'name': 'state', 'label': 'State', 'type': 'select', 'required': True, 'dynamic_options': True},
+            {'name': 'pincode', 'label': 'Pincode/ZIP', 'type': 'text', 'required': True},
+            {'name': 'id_type', 'label': 'ID Type', 'type': 'select', 'required': True, 
+             'options': ['Aadhaar Card', 'PAN Card', 'Driving License', 'Passport', 'Voter ID']},
+            {'name': 'id_number', 'label': 'ID Number', 'type': 'text', 'required': True},
+            {'name': 'emergency_contact_name', 'label': 'Emergency Contact Name', 'type': 'text', 'required': True},
+            {'name': 'emergency_contact_phone', 'label': 'Emergency Contact Phone', 'type': 'text', 'required': True},
+        ]
+        
+        form = KYCForm(
+            name='Default KYC Form',
+            is_active=True,
+            fields_config=json.dumps(default_fields)
+        )
+        db.session.add(form)
+        db.session.commit()
+    
+    # Parse fields for template
+    fields = json.loads(form.fields_config) if form.fields_config else []
+    
+    return render_template('kyc/form_builder.html', form=form, fields=fields)
+
+
+@app.route('/kyc/form/builder/save', methods=['POST'])
+@login_required
+def kyc_form_builder_save():
+    """Save KYC form configuration."""
+    import json
+    
+    form = KYCForm.query.filter_by(is_active=True).first()
+    if not form:
+        form = KYCForm(name='KYC Form', is_active=True)
+        db.session.add(form)
+    
+    # Parse the form configuration from POST data
+    # For simplicity, we accept a JSON string
+    fields_config = request.form.get('fields_config', '[]')
+    
+    try:
+        # Validate JSON
+        config = json.loads(fields_config)
+        form.fields_config = fields_config
+        db.session.commit()
+        flash('KYC form saved successfully.', 'success')
+    except json.JSONDecodeError:
+        flash('Invalid form configuration.', 'danger')
+    
+    return redirect(url_for('kyc_form_builder'))
+
+
+# ==================== EXTERNAL CUSTOMER-FACING ROUTES ====================
+
+@app.route('/kyc/external/<token>', methods=['GET', 'POST'])
+def kyc_external_form(token):
+    """External KYC form for customers to fill."""
+    customer = KYCCustomer.query.filter_by(kyc_token=token).first_or_404()
+    
+    if customer.kyc_submitted:
+        return render_template('kyc/external_already_complete.html', 
+                             message='Your KYC form has already been submitted.')
+    
+    form = KYCForm.query.filter_by(is_active=True).first()
+    if not form:
+        return render_template('kyc/external_error.html', 
+                             message='KYC form is not available. Please contact support.')
+    
+    import json
+    fields = json.loads(form.fields_config) if form.fields_config else []
+    
+    # Add passport fields for international trips
+    if customer.trip_type == 'international':
+        passport_fields = [
+            {'name': 'passport_number', 'label': 'Passport Number', 'type': 'text', 'required': True},
+            {'name': 'passport_issue_date', 'label': 'Passport Issue Date', 'type': 'date', 'required': True},
+            {'name': 'passport_expiry_date', 'label': 'Passport Expiry Date', 'type': 'date', 'required': True},
+            {'name': 'passport_issuing_authority', 'label': 'Issuing Authority', 'type': 'text', 'required': True},
+        ]
+        fields.extend(passport_fields)
+    
+    if request.method == 'POST':
+        # Collect form data for new fields
+        form_data = {
+            'full_name': request.form.get('full_name', '').strip(),
+            'gender': request.form.get('gender', '').strip(),
+            'phone': request.form.get('phone', '').strip(),
+            'email': request.form.get('email', '').strip(),
+            'nationality': request.form.get('nationality', '').strip(),
+            'address_line': request.form.get('address_line', '').strip(),
+            'city': request.form.get('city', '').strip(),
+            'state': request.form.get('state', '').strip(),
+            'pincode': request.form.get('pincode', '').strip(),
+            'company_name': request.form.get('company_name', '').strip(),
+            'designation': request.form.get('designation', '').strip(),
+            'emergency_name': request.form.get('emergency_name', '').strip(),
+            'emergency_phone': request.form.get('emergency_phone', '').strip(),
+            'emergency_relation': request.form.get('emergency_relation', '').strip(),
+            'hear_about': request.form.get('hear_about', '').strip(),
+        }
+        
+        # Handle file uploads based on trip type
+        document_paths = {}
+        
+        if customer.trip_type == 'international':
+            # International: Passport + PAN
+            passport_front = request.files.get('passport_front')
+            passport_back = request.files.get('passport_back')
+            pan_front = request.files.get('pan_front')
+            pan_back = request.files.get('pan_back')
+            
+            if passport_front:
+                path = save_uploaded_file(passport_front, f'passport_front_{customer.id}_')
+                if path:
+                    document_paths['passport_front'] = path
+            if passport_back:
+                path = save_uploaded_file(passport_back, f'passport_back_{customer.id}_')
+                if path:
+                    document_paths['passport_back'] = path
+            if pan_front:
+                path = save_uploaded_file(pan_front, f'pan_front_{customer.id}_')
+                if path:
+                    document_paths['pan_front'] = path
+            if pan_back:
+                path = save_uploaded_file(pan_back, f'pan_back_{customer.id}_')
+                if path:
+                    document_paths['pan_back'] = path
+        else:
+            # Domestic: Aadhaar/PAN + DL
+            id_front = request.files.get('id_proof_front')
+            id_back = request.files.get('id_proof_back')
+            dl_front = request.files.get('dl_front')
+            dl_back = request.files.get('dl_back')
+            
+            if id_front:
+                path = save_uploaded_file(id_front, f'id_front_{customer.id}_')
+                if path:
+                    document_paths['id_proof_front'] = path
+            if id_back:
+                path = save_uploaded_file(id_back, f'id_back_{customer.id}_')
+                if path:
+                    document_paths['id_proof_back'] = path
+            if dl_front:
+                path = save_uploaded_file(dl_front, f'dl_front_{customer.id}_')
+                if path:
+                    document_paths['dl_front'] = path
+            if dl_back:
+                path = save_uploaded_file(dl_back, f'dl_back_{customer.id}_')
+                if path:
+                    document_paths['dl_back'] = path
+        
+        # Create submission
+        submission = KYCSubmission(
+            customer_id=customer.id,
+            form_data=json.dumps(form_data),
+            document_paths=json.dumps(document_paths)
+        )
+        db.session.add(submission)
+        
+        # Update customer status
+        customer.kyc_submitted = True
+        customer.kyc_submitted_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Create notifications for KYC completion
+        try:
+            create_kyc_notifications(customer, 'kyc_completed')
+        except Exception as e:
+            print(f"[warn] Failed to create KYC completion notifications: {e}")
+        
+        # Redirect to T&Cs/Indemnity signing page
+        flash('Your KYC has been submitted successfully! Please proceed to review and sign the Terms & Conditions and Indemnity Agreement.', 'success')
+        return redirect(url_for('kyc_external_indemnity', token=customer.indemnity_token))
+    
+    return render_template('kyc/external_form.html', 
+                         customer=customer, 
+                         fields=fields, 
+                         is_international=customer.trip_type == 'international')
+
+
+@app.route('/kyc/sign/<token>', methods=['GET', 'POST'])
+def kyc_external_indemnity(token):
+    """External indemnity signing page."""
+    customer = KYCCustomer.query.filter_by(indemnity_token=token).first_or_404()
+    
+    if customer.indemnity_signed:
+        return render_template('kyc/external_already_complete.html',
+                             message='You have already signed the Terms & Conditions and Indemnity Agreement.')
+    
+    template = IndemnityTemplate.query.filter_by(is_active=True).first()
+    if not template:
+        return render_template('kyc/external_error.html',
+                             message='Required documents are not available. Please contact support.')
+    
+    if request.method == 'POST':
+        # Record signature
+        accept_terms = request.form.get('accept_terms') == 'on'
+        accept_indemnity = request.form.get('accept_indemnity') == 'on'
+        
+        if not accept_terms or not accept_indemnity:
+            flash('You must accept both the Terms & Conditions and Indemnity Agreement to proceed.', 'danger')
+            return redirect(url_for('kyc_external_indemnity', token=token))
+        
+        # Capture T&C acceptance metadata
+        terms_accepted_at = request.form.get('terms_accepted_at', '').strip()
+        terms_accepted_location = request.form.get('terms_accepted_location', '').strip()
+        
+        # Capture signature metadata
+        signature_timestamp = request.form.get('signature_timestamp', '').strip()
+        signature_location = request.form.get('signature_location', '').strip()
+        signature_ip = request.form.get('signature_ip', '').strip() or request.remote_addr
+        signature_type = request.form.get('signature_type', '').strip() or 'draw'
+        signature_image = request.form.get('signature_image', '').strip()
+        
+        # Build signature data string with image info
+        signature_data = f"e-signed-{customer.indemnity_token}|type:{signature_type}|ts:{signature_timestamp}|loc:{signature_location}|ip:{signature_ip}"
+        
+        # Save signature image if provided
+        signature_image_path = None
+        if signature_image and signature_type == 'draw' and signature_image.startswith('data:image'):
+            try:
+                # Save base64 image
+                import base64
+                from werkzeug.utils import secure_filename
+                
+                # Parse base64 data
+                header, encoded = signature_image.split(",", 1)
+                image_data = base64.b64decode(encoded)
+                
+                # Create filename
+                sig_filename = f"sig_{secure_filename(customer.name.replace(' ', '_'))}_{generate_token(8)}.png"
+                sig_dir = os.path.join(UPLOAD_FOLDER, 'signatures')
+                os.makedirs(sig_dir, exist_ok=True)
+                sig_path = os.path.join(sig_dir, sig_filename)
+                
+                # Save file
+                with open(sig_path, 'wb') as f:
+                    f.write(image_data)
+                
+                signature_image_path = os.path.join('uploads', 'kyc', 'signatures', sig_filename)
+            except Exception as e:
+                print(f"[warn] Failed to save signature image: {e}")
+        elif signature_type == 'type' and signature_image:
+            # For typed signatures, store the text
+            signature_image_path = f"typed:{signature_image}"
+        
+        # Create indemnity request record with T&C tracking
+        indemnity_req = IndemnityRequest(
+            customer_id=customer.id,
+            template_id=template.id,
+            sent_by_id=customer.created_by_id,
+            terms_accepted_at=datetime.fromisoformat(terms_accepted_at.replace('Z', '+00:00')) if terms_accepted_at else datetime.utcnow(),
+            terms_accepted_location=terms_accepted_location,
+            signed_at=datetime.utcnow(),
+            signature_data=signature_data,
+            ip_address=signature_ip,
+            user_agent=request.headers.get('User-Agent', '')
+        )
+        db.session.add(indemnity_req)
+        db.session.commit()  # Commit to get the ID
+        
+        # Save signature path to signature_data field or create separate storage
+        if signature_image_path:
+            # Store the path in a separate column if we had one, or append to signature_data
+            # For now, we'll update the record with the image path
+            indemnity_req.signature_data = f"{signature_data}|img:{signature_image_path}"
+        
+        db.session.commit()
+        
+        # Embed signature in the PDF
+        signed_pdf_path = None
+        if signature_image_path:
+            try:
+                signed_pdf_path = embed_signature_in_pdf(customer, signature_image_path, indemnity_req)
+                if signed_pdf_path:
+                    # Store signed PDF path in signature_data for reference
+                    indemnity_req.signature_data = f"{indemnity_req.signature_data}|pdf:{signed_pdf_path}"
+                    db.session.commit()
+                    print(f"[info] Signature embedded in PDF: {signed_pdf_path}")
+            except Exception as e:
+                print(f"[warn] Failed to embed signature in PDF: {e}")
+        
+        # Update customer status
+        customer.indemnity_signed = True
+        customer.indemnity_signed_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Create notifications for Indemnity signing
+        try:
+            create_kyc_notifications(customer, 'indemnity_signed')
+        except Exception as e:
+            print(f"[warn] Failed to create indemnity signing notifications: {e}")
+        
+        return render_template('kyc/external_success.html',
+                             message='Thank you for signing the Terms & Conditions and Indemnity Agreement.')
+    
+    # For GET request, process indemnity PDF with placeholder replacement
+    processed_pdf_path = None
+    if template.pdf_path:
+        processed_pdf_path = process_indemnity_pdf(template.pdf_path, customer)
+    
+    return render_template('kyc/external_indemnity.html',
+                         customer=customer,
+                         template=template,
+                         processed_pdf_path=processed_pdf_path)
+
+
+def process_indemnity_pdf(pdf_path, customer):
+    """Process indemnity PDF by replacing placeholders with customer data.
+    
+    Supported placeholders:
+    {{customer_name}} - Customer's full name
+    {{booking_id}} - Booking ID
+    {{trip_date}} - Trip date (DD-MM-YYYY format)
+    {{email}} - Customer email
+    {{phone}} - Customer phone
+    {{trip_type}} - Domestic/International
+    {{signature}} - Reserved area for signature (will be filled when signed)
+    
+    Returns the path to the processed PDF
+    """
+    import os
+    from PyPDF2 import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter, A4
+    from io import BytesIO
+    from werkzeug.utils import secure_filename
+    
+    # Prepare placeholder values
+    placeholders = {
+        '{{customer_name}}': customer.name or '',
+        '{{booking_id}}': customer.booking_id or 'N/A',
+        '{{trip_date}}': customer.trip_date.strftime('%d-%m-%Y') if customer.trip_date else 'N/A',
+        '{{email}}': customer.email or '',
+        '{{phone}}': customer.phone or '',
+        '{{trip_type}}': customer.trip_type.title() if customer.trip_type else 'N/A',
+    }
+    
+    try:
+        # Full path to the PDF
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_pdf_path = os.path.join(base_dir, pdf_path) if not pdf_path.startswith('/') else pdf_path
+        
+        if not os.path.exists(full_pdf_path):
+            print(f"[warn] PDF not found: {full_pdf_path}")
+            return pdf_path
+        
+        # Read the PDF
+        reader = PdfReader(full_pdf_path)
+        writer = PdfWriter()
+        
+        # Get page size from first page
+        first_page = reader.pages[0]
+        page_width = float(first_page.mediabox.width)
+        page_height = float(first_page.mediabox.height)
+        
+        # Process each page
+        for page_num, page in enumerate(reader.pages):
+            # Extract text to find placeholder positions
+            text_content = page.extract_text() or ''
+            
+            # Create overlay canvas for this page
+            packet = BytesIO()
+            c = canvas.Canvas(packet, pagesize=(page_width, page_height))
+            
+            # Search for placeholders and overlay text
+            # Note: This is a simplified approach - we overlay text at estimated positions
+            # For production, you would need to parse the PDF structure more carefully
+            
+            found_placeholders = []
+            for placeholder, value in placeholders.items():
+                if placeholder in text_content:
+                    found_placeholders.append((placeholder, value))
+            
+            if found_placeholders:
+                # Set font for overlay
+                c.setFont("Helvetica", 10)
+                c.setFillColorRGB(0, 0, 0)  # Black text
+                
+                # For each found placeholder, we would ideally get exact coordinates
+                # For now, we'll add a header with customer info on first page
+                if page_num == 0:
+                    # Add customer info header overlay
+                    y_pos = page_height - 50
+                    c.setFont("Helvetica-Bold", 11)
+                    c.drawString(50, y_pos, f"Customer: {placeholders['{{customer_name}}']}")
+                    y_pos -= 15
+                    c.setFont("Helvetica", 10)
+                    c.drawString(50, y_pos, f"Booking ID: {placeholders['{{booking_id}}']}")
+                    y_pos -= 15
+                    c.drawString(50, y_pos, f"Trip Date: {placeholders['{{trip_date}}']}")
+                    y_pos -= 15
+                    c.drawString(50, y_pos, f"Phone: {placeholders['{{phone}}']}")
+            
+            c.save()
+            packet.seek(0)
+            
+            # Create overlay PDF
+            from PyPDF2 import PdfReader as OverlayReader
+            try:
+                overlay = OverlayReader(packet)
+                if len(overlay.pages) > 0:
+                    page.merge_page(overlay.pages[0])
+            except Exception as e:
+                print(f"[warn] Could not merge overlay for page {page_num}: {e}")
+            
+            writer.add_page(page)
+        
+        # Create processed filename
+        processed_filename = f"processed_{secure_filename(customer.name.replace(' ', '_'))}_{generate_token(8)}.pdf"
+        processed_dir = os.path.join(UPLOAD_FOLDER, 'processed')
+        os.makedirs(processed_dir, exist_ok=True)
+        processed_path = os.path.join(processed_dir, processed_filename)
+        
+        # Write the output PDF
+        with open(processed_path, 'wb') as output_file:
+            writer.write(output_file)
+        
+        # Return relative path
+        return os.path.join('uploads', 'kyc', 'processed', processed_filename)
+        
+    except Exception as e:
+        print(f"[warn] PDF processing failed: {e}")
+        return pdf_path
+
+
+def find_pdf_fields(pdf_path):
+    """Dynamically find positions of form fields in the PDF using pdfplumber."""
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            last_page = pdf.pages[-1]
+            words = last_page.extract_words()
+            field_positions = {}
+            labels = {}
+            
+            # Find label positions
+            for i, word in enumerate(words):
+                text = word['text'].lower()
+                x = word['x0']
+                y = word['top']
+                width = word['x1'] - word['x0']
+                
+                if text == 'full' and i + 1 < len(words):
+                    next_word = words[i + 1]
+                    if next_word['text'].lower() == 'name':
+                        labels['full_name'] = {'x': x, 'y': y, 'width': width}
+                elif text == 'date':
+                    labels['date'] = {'x': x, 'y': y, 'width': width}
+                elif text == 'place':
+                    labels['place'] = {'x': x, 'y': y, 'width': width}
+                elif 'signature' in text and ':' in text:
+                    labels['signature'] = {'x': x, 'y': y, 'width': width}
+            
+            # Find rectangles (blank boxes)
+            rects = last_page.rects
+            form_boxes = []
+            for rect in rects:
+                width = rect['x1'] - rect['x0']
+                height = rect['bottom'] - rect['top']
+                if width > 50 and height < 30:
+                    form_boxes.append(rect)
+            
+            # Match boxes to labels
+            for label_name, label_pos in labels.items():
+                label_x = label_pos['x'] + (label_pos['width'] / 2)
+                label_y = label_pos['y']
+                
+                closest_box = None
+                min_distance = float('inf')
+                
+                for box in form_boxes:
+                    box_x = (box['x0'] + box['x1']) / 2
+                    box_center_y = (box['top'] + box['bottom']) / 2
+                    
+                    x_diff = abs(box_x - label_x)
+                    y_diff = abs(box_center_y - label_y)
+                    
+                    if x_diff < 80 and y_diff < 30:
+                        distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_box = box
+                
+                if closest_box:
+                    text_x = closest_box['x0'] + 5
+                    text_y = closest_box['top'] + 3
+                    field_positions[label_name] = (text_x, text_y)
+            
+            # Special handling for signature - look for large box below signature label
+            if 'signature' in labels and 'signature' not in field_positions:
+                sig_label = labels['signature']
+                sig_label_x = sig_label['x'] + (sig_label['width'] / 2)
+                sig_label_y = sig_label['y']
+                
+                # Find box below signature label (larger y distance allowed)
+                for box in form_boxes:
+                    box_x = (box['x0'] + box['x1']) / 2
+                    box_center_y = (box['top'] + box['bottom']) / 2
+                    
+                    x_diff = abs(box_x - sig_label_x)
+                    y_diff = box_center_y - sig_label_y  # Box should be below label
+                    
+                    # Signature box is the large one at y~390, allow larger y range
+                    if x_diff < 100 and 50 < y_diff < 150:
+                        text_x = box['x0'] + 10
+                        text_y = box['top'] + 10
+                        field_positions['signature'] = (text_x, text_y)
+                        break
+            
+            print(f"[debug] Detected positions: {field_positions}")
+            return field_positions if len(field_positions) >= 2 else None
+    except Exception as e:
+        print(f"[warn] Could not find PDF fields: {e}")
+        return None
+
+
+def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
+    """Embed customer signature into the indemnity PDF at the signature line.
+    
+    Fills the EXECUTION table with:
+    - Full Name (from KYC data or customer name)
+    - Date (signed date)
+    - Place (location from signature metadata)
+    
+    Places signature in the SIGNATURE OF PARTICIPANT box.
+    
+    Args:
+        customer: KYCCustomer object
+        signature_image_path: Path to the saved signature image
+        indemnity_request: IndemnityRequest object with signature data
+    
+    Returns:
+        Path to the signed PDF with embedded signature
+    """
+    import os
+    from PyPDF2 import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.utils import ImageReader
+    from io import BytesIO
+    from werkzeug.utils import secure_filename
+    
+    try:
+        # Get the original processed PDF or template PDF
+        template = IndemnityTemplate.query.filter_by(id=indemnity_request.template_id).first()
+        if not template or not template.pdf_path:
+            print("[warn] No template found for signature embedding")
+            return None
+        
+        # Check if there's already a processed PDF for this customer
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        processed_dir = os.path.join(UPLOAD_FOLDER, 'processed')
+        
+        # Look for existing processed PDF for this customer
+        existing_processed = None
+        if os.path.exists(processed_dir):
+            for f in os.listdir(processed_dir):
+                if f.startswith(f"processed_{secure_filename(customer.name.replace(' ', '_'))}") and f.endswith('.pdf'):
+                    existing_processed = os.path.join(processed_dir, f)
+                    break
+        
+        # Use existing processed PDF or template PDF
+        if existing_processed and os.path.exists(existing_processed):
+            pdf_path = existing_processed
+        else:
+            pdf_path = os.path.join(base_dir, template.pdf_path) if not template.pdf_path.startswith('/') else template.pdf_path
+        
+        if not os.path.exists(pdf_path):
+            print(f"[warn] PDF not found for signature embedding: {pdf_path}")
+            return None
+        
+        # Read the PDF
+        reader = PdfReader(pdf_path)
+        writer = PdfWriter()
+        
+        # Get page size
+        first_page = reader.pages[0]
+        page_width = float(first_page.mediabox.width)
+        page_height = float(first_page.mediabox.height)
+        
+        # Parse signature data for location
+        location = ""
+        if indemnity_request.terms_accepted_location:
+            location = indemnity_request.terms_accepted_location
+        elif indemnity_request.signature_data:
+            # Try to extract location from signature_data string
+            for part in indemnity_request.signature_data.split('|'):
+                if part.startswith('loc:'):
+                    location = part.replace('loc:', '')
+                    break
+        
+        # Get full name from KYC submission if available
+        full_name = customer.name
+        if customer.submission and customer.submission.form_data:
+            import json
+            try:
+                form_data = json.loads(customer.submission.form_data)
+                if form_data.get('full_name'):
+                    full_name = form_data['full_name']
+            except:
+                pass
+        
+        # Format date
+        signed_date = ""
+        if indemnity_request.signed_at:
+            signed_date = indemnity_request.signed_at.strftime('%d/%m/%Y')
+        
+        # Try to find field positions dynamically
+        field_positions = find_pdf_fields(pdf_path)
+        
+        # Process each page
+        for page_num, page in enumerate(reader.pages):
+            # Create overlay canvas
+            packet = BytesIO()
+            c = canvas.Canvas(packet, pagesize=(page_width, page_height))
+            
+            # Add signature and execution details on the last page
+            if page_num == len(reader.pages) - 1:
+                try:
+                    # ===== EXECUTION TABLE FIELDS =====
+                    c.setFont("Helvetica-Bold", 10)
+                    c.setFillColorRGB(0, 0, 0)
+                    
+                    # Use dynamically detected positions or fallback to correct coordinates
+                    if 'full_name' in field_positions:
+                        x, y = field_positions['full_name']
+                        c.drawString(x, y, full_name)
+                    else:
+                        # Fallback: Full Name box is at x=56.7-226.9, y=309.2-327.9
+                        c.drawString(62, 312, full_name)
+                    
+                    if 'date' in field_positions:
+                        x, y = field_positions['date']
+                        c.drawString(x, y, signed_date)
+                    else:
+                        # Fallback: Date box is at x=226.9-376.9, y=309.2-327.9  
+                        c.drawString(232, 312, signed_date)
+                    
+                    if 'place' in field_positions:
+                        x, y = field_positions['place']
+                        c.drawString(x, y, location)
+                    else:
+                        # Fallback: Place box is at x=376.9-538.9, y=309.2-327.9
+                        c.drawString(382, 312, location)
+                    
+                    # ===== SIGNATURE OF PARTICIPANT BOX =====
+                    if signature_image_path:
+                        full_sig_path = os.path.join(base_dir, signature_image_path) if not signature_image_path.startswith('/') else signature_image_path
+                        
+                        if 'signature' in field_positions:
+                            x, y = field_positions['signature']
+                        else:
+                            x, y = 130, 420
+                        
+                        if signature_image_path.startswith('typed:'):
+                            sig_text = signature_image_path.replace('typed:', '')
+                            c.setFont("Times-Italic", 18)
+                            c.setFillColorRGB(0, 0, 0.8)
+                            c.drawString(x, y, sig_text)
+                        elif os.path.exists(full_sig_path):
+                            img = ImageReader(full_sig_path)
+                            c.drawImage(img, x, y - 30, width=200, height=50, mask='auto')
+                    
+                    # Add timestamp below signature box
+                    c.setFont("Helvetica", 7)
+                    c.setFillColorRGB(0.4, 0.4, 0.4)
+                    
+                    from datetime import timedelta
+                    if indemnity_request.signed_at:
+                        ist_offset = timedelta(hours=5, minutes=30)
+                        ist_time = (indemnity_request.signed_at + ist_offset).strftime('%d-%m-%Y %I:%M %p')
+                    else:
+                        ist_time = ''
+                    
+                    c.drawString(130, 285, f"Signed: {ist_time} IST | IP: {indemnity_request.ip_address or 'N/A'}")
+                            
+                except Exception as sig_e:
+                    print(f"[warn] Failed to embed signature elements: {sig_e}")
+            
+            c.save()
+            packet.seek(0)
+            
+            # Merge overlay with page
+            try:
+                from PyPDF2 import PdfReader as OverlayReader
+                overlay = OverlayReader(packet)
+                if len(overlay.pages) > 0:
+                    page.merge_page(overlay.pages[0])
+            except Exception as e:
+                print(f"[warn] Could not merge signature overlay: {e}")
+            
+            writer.add_page(page)
+        
+        # Create signed PDF filename
+        signed_filename = f"signed_{secure_filename(customer.name.replace(' ', '_'))}_{generate_token(8)}.pdf"
+        signed_dir = os.path.join(UPLOAD_FOLDER, 'signed')
+        os.makedirs(signed_dir, exist_ok=True)
+        signed_path = os.path.join(signed_dir, signed_filename)
+        
+        # Write the signed PDF
+        with open(signed_path, 'wb') as output_file:
+            writer.write(output_file)
+        
+        # Return relative path
+        signed_relative_path = os.path.join('uploads', 'kyc', 'signed', signed_filename)
+        print(f"[info] Created signed PDF: {signed_relative_path}")
+        return signed_relative_path
+        
+    except Exception as e:
+        print(f"[error] Failed to embed signature in PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+@app.route('/kyc/submissions/<int:customer_id>')
+@login_required
+def kyc_submission_view(customer_id):
+    """View a specific customer's KYC submission (for admin/agents)."""
+    import json
+    customer = KYCCustomer.query.get_or_404(customer_id)
+    
+    # Check permission
+    if current_user.role != 'admin' and customer.created_by_id != current_user.id:
+        flash('You do not have permission to view this submission.', 'danger')
+        return redirect(url_for('kyc_customers'))
+    
+    form_data = {}
+    document_paths = {}
+    
+    if customer.submission:
+        form_data = json.loads(customer.submission.form_data) if customer.submission.form_data else {}
+        document_paths = json.loads(customer.submission.document_paths) if customer.submission.document_paths else {}
+    
+    return render_template('kyc/submission_view.html',
+                         customer=customer,
+                         form_data=form_data,
+                         document_paths=document_paths)
+
+
+@app.route('/kyc/customers/<int:customer_id>/detail')
+@login_required
+def kyc_customer_detail(customer_id):
+    """View detailed customer information with KYC data and documents."""
+    import json
+    customer = KYCCustomer.query.get_or_404(customer_id)
+    
+    # Check permission
+    if current_user.role != 'admin' and customer.created_by_id != current_user.id:
+        flash('You do not have permission to view this customer.', 'danger')
+        return redirect(url_for('kyc_customers'))
+    
+    # Get form data and document paths
+    form_data = {}
+    document_paths = {}
+    indemnity_request = None
+    
+    if customer.submission:
+        form_data = json.loads(customer.submission.form_data) if customer.submission.form_data else {}
+        document_paths = json.loads(customer.submission.document_paths) if customer.submission.document_paths else {}
+    
+    # Get indemnity request details if signed
+    if customer.indemnity_signed:
+        indemnity_request = IndemnityRequest.query.filter_by(customer_id=customer.id).first()
+    
+    # Get active template for indemnity PDF
+    active_template = IndemnityTemplate.query.filter_by(is_active=True).first()
+    
+    return render_template('kyc/customer_detail.html',
+                         customer=customer,
+                         form_data=form_data,
+                         document_paths=document_paths,
+                         indemnity_request=indemnity_request,
+                         active_template=active_template)
+
+
+@app.route('/kyc/settings/email', methods=['GET', 'POST'])
+@login_required
+def kyc_email_settings():
+    """Configure SMTP settings for KYC emails (care@deyor.in)."""
+    if request.method == 'POST':
+        smtp_host = request.form.get('smtp_host', '').strip()
+        smtp_port = request.form.get('smtp_port', '587').strip()
+        smtp_user = request.form.get('smtp_user', '').strip()
+        smtp_pass = request.form.get('smtp_pass', '').strip()
+        
+        if not smtp_host or not smtp_user or not smtp_pass:
+            flash('SMTP Host, Username, and Password are required.', 'danger')
+            return redirect(url_for('kyc_email_settings'))
+        
+        # Save settings to database
+        settings = [
+            ('kyc_smtp_host', smtp_host),
+            ('kyc_smtp_port', smtp_port),
+            ('kyc_smtp_user', smtp_user),
+            ('kyc_smtp_pass', smtp_pass),
+        ]
+        
+        for key, value in settings:
+            meta = AppMeta.query.filter_by(key=key).first()
+            if meta:
+                meta.value = value
+            else:
+                meta = AppMeta(key=key, value=value)
+                db.session.add(meta)
+        
+        db.session.commit()
+        flash('Email settings saved successfully.', 'success')
+        return redirect(url_for('kyc_email_settings'))
+    
+    # Get current settings
+    settings = get_kyc_email_settings()
+    return render_template('kyc/email_settings.html', settings=settings)
+
+
+@app.route('/kyc/settings/email/test', methods=['POST'])
+@login_required
+def kyc_test_email():
+    """Test email configuration by sending a test email."""
+    test_email = request.form.get('test_email', current_user.email).strip()
+    
+    try:
+        settings = get_kyc_email_settings()
+        
+        if not settings['smtp_host'] or not settings['smtp_user'] or not settings['smtp_pass']:
+            flash('Please save SMTP settings first.', 'danger')
+            return redirect(url_for('kyc_email_settings'))
+        
+        subject = "Test Email from Deyor KYC System"
+        body = f"""Hello,
+
+This is a test email from your Deyor KYC email configuration.
+
+If you received this email, your SMTP settings are working correctly!
+
+Configuration used:
+- From: {settings['smtp_user']}
+- SMTP Host: {settings['smtp_host']}
+- SMTP Port: {settings['smtp_port']}
+
+Best regards,
+Deyor System
+"""
+        
+        context = ssl.create_default_context(cafile=certifi.where())
+        with smtplib.SMTP(settings['smtp_host'], settings['smtp_port']) as server:
+            server.starttls(context=context)
+            server.login(settings['smtp_user'], settings['smtp_pass'])
+            
+            msg = MIMEText(body)
+            msg['Subject'] = subject
+            msg['From'] = settings['smtp_user']
+            msg['To'] = test_email
+            
+            server.sendmail(settings['smtp_user'], [test_email], msg.as_string())
+        
+        flash(f'Test email sent successfully to {test_email}!', 'success')
+    except Exception as e:
+        flash(f'Failed to send test email: {str(e)}', 'danger')
+    
+    return redirect(url_for('kyc_email_settings'))
+
+
+@app.route('/uploads/<path:filename>')
+def uploaded_file(filename):
+    """Serve uploaded files securely."""
+    from flask import send_from_directory
+    upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+    return send_from_directory(upload_dir, filename)
+
+
+def create_kyc_notifications(customer, event_type):
+    """Create in-app notifications and send email alerts for KYC events.
+    
+    Args:
+        customer: KYCCustomer object
+        event_type: 'kyc_completed' or 'indemnity_signed'
+    """
+    # Get the user who created this customer
+    creator = db.session.get(User, customer.created_by_id)
+    if not creator:
+        return
+    
+    # Create in-app notification
+    if event_type == 'kyc_completed':
+        message = f"Customer {customer.name} has completed their KYC form."
+        notification_type = 'kyc_completed'
+    elif event_type == 'indemnity_signed':
+        message = f"Customer {customer.name} has signed the Terms & Conditions and Indemnity Agreement."
+        notification_type = 'indemnity_signed'
+    else:
+        message = f"Update from customer {customer.name}."
+        notification_type = 'kyc_update'
+    
+    # Create notification for the creator
+    notification = Notification(
+        user_id=creator.id,
+        type=notification_type,
+        message=message,
+        created_at=datetime.utcnow(),
+        is_read=False
+    )
+    db.session.add(notification)
+    db.session.commit()
+    
+    # Send email notification to creator only
+    try:
+        send_kyc_admin_notification(creator.email, customer, event_type)
+    except Exception as e:
+        print(f"[warn] Failed to send admin notification email: {e}")
+
+
+def send_kyc_admin_notification(admin_email, customer, event_type):
+    """Send email notification to admin when customer completes KYC action."""
+    settings = get_kyc_email_settings()
+    
+    if not settings['smtp_host'] or not settings['smtp_user'] or not settings['smtp_pass']:
+        print("[warn] SMTP not configured, skipping admin notification email")
+        return
+    
+    if event_type == 'kyc_completed':
+        subject = f"KYC Completed - {customer.name}"
+        body = f"""Hello,
+
+Customer {customer.name} has successfully completed their KYC form.
+
+Customer Details:
+- Name: {customer.name}
+- Email: {customer.email}
+- Phone: {customer.phone}
+- Trip Type: {customer.trip_type.title()}
+- Trip Date: {customer.trip_date.strftime('%d-%m-%Y') if customer.trip_date else 'Not specified'}
+- Booking ID: {customer.booking_id or 'N/A'}
+
+You can view their submission at: {url_for('kyc_customer_detail', customer_id=customer.id, _external=True)}
+
+Best regards,
+Deyor KYC System
+"""
+    elif event_type == 'indemnity_signed':
+        subject = f"Indemnity Signed - {customer.name}"
+        body = f"""Hello,
+
+Customer {customer.name} has signed the Terms & Conditions and Indemnity Agreement.
+
+Customer Details:
+- Name: {customer.name}
+- Email: {customer.email}
+- Phone: {customer.phone}
+- Trip Type: {customer.trip_type.title()}
+- Trip Date: {customer.trip_date.strftime('%d-%m-%Y') if customer.trip_date else 'Not specified'}
+- Booking ID: {customer.booking_id or 'N/A'}
+
+Signed at: {datetime.utcnow().strftime('%d-%m-%Y %I:%M %p')} IST
+
+You can view their details at: {url_for('kyc_customer_detail', customer_id=customer.id, _external=True)}
+
+Best regards,
+Deyor KYC System
+"""
+    else:
+        return
+    
+    try:
+        context = ssl.create_default_context(cafile=certifi.where())
+        with smtplib.SMTP(settings['smtp_host'], settings['smtp_port']) as server:
+            server.starttls(context=context)
+            server.login(settings['smtp_user'], settings['smtp_pass'])
+            
+            msg = MIMEText(body)
+            msg['Subject'] = subject
+            msg['From'] = settings['smtp_user']
+            msg['To'] = admin_email
+            
+            server.sendmail(settings['smtp_user'], [admin_email], msg.as_string())
+            print(f"[info] Admin notification sent to {admin_email}")
+    except Exception as e:
+        print(f"[warn] Failed to send admin notification: {e}")
+
+
+@app.route('/kyc/admin/reprocess-pdfs', methods=['POST'])
+@login_required
+def kyc_reprocess_pdfs():
+    """Admin route to reprocess all signed PDFs with corrected coordinates."""
+    if current_user.role != 'admin':
+        flash('Only administrators can perform this action.', 'danger')
+        return redirect(url_for('kyc_dashboard'))
+    
+    try:
+        # Import the reprocess function
+        import subprocess
+        import sys
+        
+        result = subprocess.run([sys.executable, 'reprocess_signed_pdfs.py'], 
+                              capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+        
+        if result.returncode == 0:
+            flash('Successfully reprocessed all signed PDFs with corrected coordinates.', 'success')
+        else:
+            flash(f'Reprocessing completed with some issues. Check logs.', 'warning')
+            print(f"[reprocess output] {result.stdout}")
+            print(f"[reprocess errors] {result.stderr}")
+    except Exception as e:
+        flash(f'Failed to reprocess PDFs: {str(e)}', 'danger')
+    
+    return redirect(url_for('kyc_dashboard'))
+
+
+# ==================== END KYC ROUTES ====================
 
 
 if __name__ == '__main__':
