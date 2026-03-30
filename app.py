@@ -3112,24 +3112,37 @@ Deyor System
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     """Serve uploaded files securely from Render disk or local uploads."""
-    from flask import send_from_directory, abort
+    from flask import send_from_directory, abort, current_app
     import os
+    
+    # Debug logging
+    print(f"[debug] uploaded_file requested: {filename}")
+    print(f"[debug] UPLOAD_FOLDER: {UPLOAD_FOLDER}")
+    print(f"[debug] UPLOAD_PATH env: {os.environ.get('UPLOAD_PATH')}")
     
     # Try Render persistent disk first (UPLOAD_PATH env var or default)
     render_upload_dir = os.environ.get('UPLOAD_PATH') or '/opt/render/project/src/uploads'
     local_upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     
+    print(f"[debug] render_upload_dir: {render_upload_dir}")
+    print(f"[debug] local_upload_dir: {local_upload_dir}")
+    
     # Try Render disk location first
     full_render_path = os.path.join(render_upload_dir, filename)
+    print(f"[debug] Checking render path: {full_render_path} - exists: {os.path.exists(full_render_path)}")
     if os.path.exists(full_render_path):
+        print(f"[debug] Serving from render disk: {full_render_path}")
         return send_from_directory(render_upload_dir, filename)
     
     # Fall back to local uploads for backwards compatibility
     full_local_path = os.path.join(local_upload_dir, filename)
+    print(f"[debug] Checking local path: {full_local_path} - exists: {os.path.exists(full_local_path)}")
     if os.path.exists(full_local_path):
+        print(f"[debug] Serving from local: {full_local_path}")
         return send_from_directory(local_upload_dir, filename)
     
     # File not found in either location
+    print(f"[error] File not found: {filename}")
     abort(404)
 
 
