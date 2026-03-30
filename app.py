@@ -3281,7 +3281,46 @@ def kyc_reprocess_pdfs():
     return redirect(url_for('kyc_dashboard'))
 
 
-# ==================== END KYC ROUTES ====================
+@app.route('/kyc/debug/indemnity-pdf')
+def kyc_debug_indemnity_pdf():
+    """Directly serve the indemnity PDF for testing."""
+    import os
+    from flask import send_from_directory, abort, jsonify
+    
+    # Get active template
+    template = IndemnityTemplate.query.filter_by(is_active=True).first()
+    if not template or not template.pdf_path:
+        return jsonify({'error': 'No active template or pdf_path'}), 404
+    
+    # Get the filename from the stored path
+    pdf_path = template.pdf_path  # e.g., uploads/kyc/indemnity_xxx.pdf
+    filename = pdf_path.replace('uploads/', '')  # e.g., kyc/indemnity_xxx.pdf
+    
+    # Try to serve directly from UPLOAD_FOLDER
+    full_path = os.path.join(UPLOAD_FOLDER, filename)
+    
+    if os.path.exists(full_path):
+        return send_from_directory(UPLOAD_FOLDER, filename)
+    
+    # Try alternate locations
+    possible_paths = [
+        os.path.join('/opt/render/project/src/uploads', filename),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', filename),
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            dir_name = os.path.dirname(path)
+            base_name = os.path.basename(path)
+            return send_from_directory(dir_name, base_name)
+    
+    return jsonify({
+        'error': 'PDF not found',
+        'pdf_path': pdf_path,
+        'filename': filename,
+        'checked_paths': [full_path] + possible_paths,
+        'UPLOAD_FOLDER': UPLOAD_FOLDER
+    }), 404
 
 @app.route('/kyc/debug/status')
 def kyc_debug_status():
