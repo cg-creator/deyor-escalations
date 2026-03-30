@@ -3112,36 +3112,63 @@ Deyor System
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     """Serve uploaded files securely from Render disk or local uploads."""
-    from flask import send_from_directory, abort, current_app
+    from flask import send_from_directory, abort, current_app, jsonify
     import os
     
-    # Debug logging
-    current_app.logger.info(f"[uploads] Requested: {filename}")
+    # Debug logging - print to stderr for Render logs
+    import sys
+    print(f"[UPLOADS] Requested filename: '{filename}'", file=sys.stderr)
+    print(f"[UPLOADS] UPLOAD_FOLDER: '{UPLOAD_FOLDER}'", file=sys.stderr)
+    print(f"[UPLOADS] UPLOAD_PATH env: '{os.environ.get('UPLOAD_PATH')}'", file=sys.stderr)
     
-    # Possible upload directories to check (in order of priority)
-    possible_dirs = [
-        os.environ.get('UPLOAD_PATH'),  # Render persistent disk
-        '/opt/render/project/src/uploads',  # Default Render disk path
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads'),  # Local uploads
-    ]
+    # The filename from URL is like 'kyc/indemnity_xxx.pdf'
+    # We need to look in UPLOAD_FOLDER for this path
     
-    # Filter out None values
-    possible_dirs = [d for d in possible_dirs if d]
+    # Try direct path first
+    full_path = os.path.join(UPLOAD_FOLDER, filename)
+    print(f"[UPLOADS] Checking full_path: '{full_path}' exists: {os.path.exists(full_path)}", file=sys.stderr)
     
-    current_app.logger.info(f"[uploads] Checking directories: {possible_dirs}")
+    if os.path.exists(full_path):
+        print(f"[UPLOADS] Serving from UPLOAD_FOLDER", file=sys.stderr)
+        return send_from_directory(UPLOAD_FOLDER, filename)
     
-    # Try each directory
-    for upload_dir in possible_dirs:
-        full_path = os.path.join(upload_dir, filename)
-        current_app.logger.info(f"[uploads] Checking: {full_path} - exists: {os.path.exists(full_path)}")
-        if os.path.exists(full_path):
-            current_app.logger.info(f"[uploads] Serving from: {upload_dir}")
-            return send_from_directory(upload_dir, filename)
+    # Try without 'kyc/' prefix if filename starts with it
+    if filename.startswith('kyc/'):
+        alt_filename = filename[4:]  # Remove 'kyc/'
+        alt_path = os.path.join(UPLOAD_FOLDER, 'kyc', alt_filename)
+        print(f"[UPLOADS] Checking alt_path: '{alt_path}' exists: {os.path.exists(alt_path)}", file=sys.stderr)
+        if os.path.exists(alt_path):
+            return send_from_directory(os.path.join(UPLOAD_FOLDER, 'kyc'), alt_filename)
     
-    # File not found - log all attempted paths for debugging
-    current_app.logger.error(f"[uploads] File not found: {filename}")
-    current_app.logger.error(f"[uploads] Checked directories: {possible_dirs}")
-    abort(404)
+    # Try with 'kyc/' prefix if filename doesn't have it
+    if not filename.startswith('kyc/'):
+        alt_path = os.path.join(UPLOAD_FOLDER, 'kyc', filename)
+        print(f"[UPLOADS] Checking alt_path with kyc/: '{alt_path}' exists: {os.path.exists(alt_path)}", file=sys.stderr)
+        if os.path.exists(alt_path):
+            return send_from_directory(os.path.join(UPLOAD_FOLDER, 'kyc'), filename)
+    
+    # List what's actually in UPLOAD_FOLDER
+    try:
+        if os.path.exists(UPLOAD_FOLDER):
+            kyc_dir = os.path.join(UPLOAD_FOLDER, 'kyc')
+            if os.path.exists(kyc_dir):
+                files = os.listdir(kyc_dir)[:5]
+                print(f"[UPLOADS] Files in kyc dir: {files}", file=sys.stderr)
+    except Exception as e:
+        print(f"[UPLOADS] Error listing: {e}", file=sys.stderr)
+    
+    print(f"[UPLOADS] File not found: '{filename}'", file=sys.stderr)
+    
+    # Return helpful error for debugging
+    return jsonify({
+        'error': 'File not found',
+        'requested_filename': filename,
+        'UPLOAD_FOLDER': UPLOAD_FOLDER,
+        'checked_paths': {
+            'direct': full_path,
+            'with_kyc': os.path.join(UPLOAD_FOLDER, 'kyc', filename) if not filename.startswith('kyc/') else None
+        }
+    }), 404
 
 
 def create_kyc_notifications(customer, event_type):
