@@ -2477,7 +2477,7 @@ def kyc_external_indemnity(token):
                 
                 # Create filename
                 sig_filename = f"sig_{secure_filename(customer.name.replace(' ', '_'))}_{generate_token(8)}.png"
-                sig_dir = os.path.join(UPLOAD_FOLDER, 'signatures')
+                sig_dir = os.path.join(UPLOAD_FOLDER, 'kyc', 'signatures')
                 os.makedirs(sig_dir, exist_ok=True)
                 sig_path = os.path.join(sig_dir, sig_filename)
                 
@@ -2685,93 +2685,74 @@ def process_indemnity_pdf(pdf_path, customer):
 
 
 def find_pdf_fields(pdf_path):
-    """Dynamically find positions of form fields in the PDF using pdfplumber."""
+    """Dynamically find positions of form fields in the PDF using pdfplumber.
+    
+    Returns coordinates in ReportLab format (origin at bottom-left).
+    pdfplumber uses top-left origin, so we convert: reportlab_y = page_height - pdfplumber_y
+    """
+    import sys
     try:
         import pdfplumber
         with pdfplumber.open(pdf_path) as pdf:
             last_page = pdf.pages[-1]
+            page_height = float(last_page.height)
             words = last_page.extract_words()
             field_positions = {}
-            labels = {}
             
-            # Find label positions
+            print(f"[find_fields] Page height: {page_height}", file=sys.stderr)
+            print(f"[find_fields] Found {len(words)} words on last page", file=sys.stderr)
+            
+            # Log all words for debugging
             for i, word in enumerate(words):
                 text = word['text'].lower()
-                x = word['x0']
-                y = word['top']
-                width = word['x1'] - word['x0']
+                if any(kw in text for kw in ['signature', 'full', 'name', 'date', 'place', 'execution']):
+                    print(f"[find_fields] Word {i}: '{word['text']}' x0={word['x0']:.1f} top={word['top']:.1f} bottom={word['bottom']:.1f}", file=sys.stderr)
+            
+            # Look for "Signature:" label on the last page
+            for i, word in enumerate(words):
+                text = word['text']
                 
-                if text == 'full' and i + 1 < len(words):
-                    next_word = words[i + 1]
-                    if next_word['text'].lower() == 'name':
-                        labels['full_name'] = {'x': x, 'y': y, 'width': width}
-                elif text == 'date':
-                    labels['date'] = {'x': x, 'y': y, 'width': width}
+                # Find "Signature:" text position
+                if text.lower().startswith('signature'):
+                    # The signature line is right after "Signature:" - place signature above it
+                    sig_x = word['x1'] + 10  # Right of "Signature:" label
+                    sig_y_plumber = word['top']
+                    # Convert to ReportLab Y (from bottom)
+                    sig_y = page_height - sig_y_plumber
+                    field_positions['signature'] = (sig_x, sig_y)
+                    print(f"[find_fields] Found signature at x={sig_x:.1f}, y={sig_y:.1f} (plumber_y={sig_y_plumber:.1f})", file=sys.stderr)
+            
+            # Look for the EXECUTION section labels on the last page
+            # These are typically in a table row with Full Name | Date | Place
+            for i, word in enumerate(words):
+                text = word['text'].lower()
+                
+                if text == 'full' and i + 1 < len(words) and words[i+1]['text'].lower() == 'name':
+                    # "Full Name" label - the value goes below it
+                    label_x = word['x0']
+                    label_bottom_plumber = word['bottom']
+                    # Place text below the label, convert to ReportLab Y
+                    field_positions['full_name'] = (label_x + 5, page_height - label_bottom_plumber - 12)
+                    print(f"[find_fields] Found full_name label at x={label_x:.1f}, plumber_bottom={label_bottom_plumber:.1f}", file=sys.stderr)
+                
+                elif text == 'date' and (i == 0 or words[i-1]['text'].lower() != 'trip'):
+                    label_x = word['x0']
+                    label_bottom_plumber = word['bottom']
+                    field_positions['date'] = (label_x + 5, page_height - label_bottom_plumber - 12)
+                    print(f"[find_fields] Found date label at x={label_x:.1f}, plumber_bottom={label_bottom_plumber:.1f}", file=sys.stderr)
+                
                 elif text == 'place':
-                    labels['place'] = {'x': x, 'y': y, 'width': width}
-                elif 'signature' in text and ':' in text:
-                    labels['signature'] = {'x': x, 'y': y, 'width': width}
+                    label_x = word['x0']
+                    label_bottom_plumber = word['bottom']
+                    field_positions['place'] = (label_x + 5, page_height - label_bottom_plumber - 12)
+                    print(f"[find_fields] Found place label at x={label_x:.1f}, plumber_bottom={label_bottom_plumber:.1f}", file=sys.stderr)
             
-            # Find rectangles (blank boxes)
-            rects = last_page.rects
-            form_boxes = []
-            for rect in rects:
-                width = rect['x1'] - rect['x0']
-                height = rect['bottom'] - rect['top']
-                if width > 50 and height < 30:
-                    form_boxes.append(rect)
-            
-            # Match boxes to labels
-            for label_name, label_pos in labels.items():
-                label_x = label_pos['x'] + (label_pos['width'] / 2)
-                label_y = label_pos['y']
-                
-                closest_box = None
-                min_distance = float('inf')
-                
-                for box in form_boxes:
-                    box_x = (box['x0'] + box['x1']) / 2
-                    box_center_y = (box['top'] + box['bottom']) / 2
-                    
-                    x_diff = abs(box_x - label_x)
-                    y_diff = abs(box_center_y - label_y)
-                    
-                    if x_diff < 80 and y_diff < 30:
-                        distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
-                        if distance < min_distance:
-                            min_distance = distance
-                            closest_box = box
-                
-                if closest_box:
-                    text_x = closest_box['x0'] + 5
-                    text_y = closest_box['top'] + 3
-                    field_positions[label_name] = (text_x, text_y)
-            
-            # Special handling for signature - look for large box below signature label
-            if 'signature' in labels and 'signature' not in field_positions:
-                sig_label = labels['signature']
-                sig_label_x = sig_label['x'] + (sig_label['width'] / 2)
-                sig_label_y = sig_label['y']
-                
-                # Find box below signature label (larger y distance allowed)
-                for box in form_boxes:
-                    box_x = (box['x0'] + box['x1']) / 2
-                    box_center_y = (box['top'] + box['bottom']) / 2
-                    
-                    x_diff = abs(box_x - sig_label_x)
-                    y_diff = box_center_y - sig_label_y  # Box should be below label
-                    
-                    # Signature box is the large one at y~390, allow larger y range
-                    if x_diff < 100 and 50 < y_diff < 150:
-                        text_x = box['x0'] + 10
-                        text_y = box['top'] + 10
-                        field_positions['signature'] = (text_x, text_y)
-                        break
-            
-            print(f"[debug] Detected positions: {field_positions}")
-            return field_positions if len(field_positions) >= 2 else None
+            print(f"[find_fields] Final positions (ReportLab coords): {field_positions}", file=sys.stderr)
+            return field_positions if field_positions else None
     except Exception as e:
-        print(f"[warn] Could not find PDF fields: {e}")
+        import traceback
+        print(f"[warn] Could not find PDF fields: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return None
 
 
@@ -2871,7 +2852,12 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
             signed_date = indemnity_request.signed_at.strftime('%d/%m/%Y')
         
         # Try to find field positions dynamically
-        field_positions = find_pdf_fields(pdf_path)
+        import sys
+        field_positions = find_pdf_fields(pdf_path) or {}
+        print(f"[embed_sig] field_positions: {field_positions}", file=sys.stderr)
+        print(f"[embed_sig] page_width={page_width}, page_height={page_height}", file=sys.stderr)
+        print(f"[embed_sig] full_name='{full_name}', signed_date='{signed_date}', location='{location}'", file=sys.stderr)
+        print(f"[embed_sig] signature_image_path='{signature_image_path}'", file=sys.stderr)
         
         # Process each page
         for page_num, page in enumerate(reader.pages):
@@ -2882,55 +2868,76 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
             # Add signature and execution details on the last page
             if page_num == len(reader.pages) - 1:
                 try:
-                    # ===== EXECUTION TABLE FIELDS =====
-                    c.setFont("Helvetica-Bold", 10)
-                    c.setFillColorRGB(0, 0, 0)
-                    
-                    # Use dynamically detected positions or fallback to correct coordinates
-                    if 'full_name' in field_positions:
-                        x, y = field_positions['full_name']
-                        c.drawString(x, y, full_name)
-                    else:
-                        # Fallback: Full Name box is at x=56.7-226.9, y=309.2-327.9
-                        c.drawString(62, 312, full_name)
-                    
-                    if 'date' in field_positions:
-                        x, y = field_positions['date']
-                        c.drawString(x, y, signed_date)
-                    else:
-                        # Fallback: Date box is at x=226.9-376.9, y=309.2-327.9  
-                        c.drawString(232, 312, signed_date)
-                    
-                    if 'place' in field_positions:
-                        x, y = field_positions['place']
-                        c.drawString(x, y, location)
-                    else:
-                        # Fallback: Place box is at x=376.9-538.9, y=309.2-327.9
-                        c.drawString(382, 312, location)
-                    
                     # ===== SIGNATURE OF PARTICIPANT BOX =====
+                    # Place signature image/text near the "Signature:" line
                     if signature_image_path:
                         # Resolve signature image path
                         sig_rel = signature_image_path.replace('uploads/', '', 1) if signature_image_path.startswith('uploads/') else signature_image_path
                         full_sig_path = os.path.join(UPLOAD_FOLDER, sig_rel)
                         if not os.path.exists(full_sig_path):
+                            # Also check without kyc/ prefix
+                            full_sig_path = os.path.join(UPLOAD_FOLDER, 'kyc', 'signatures', os.path.basename(sig_rel))
+                        if not os.path.exists(full_sig_path):
                             full_sig_path = os.path.join(base_dir, signature_image_path) if not signature_image_path.startswith('/') else signature_image_path
                         
+                        print(f"[embed_sig] Resolved sig path: '{full_sig_path}', exists: {os.path.exists(full_sig_path)}", file=sys.stderr)
+                        
                         if 'signature' in field_positions:
-                            x, y = field_positions['signature']
+                            sig_x, sig_y = field_positions['signature']
                         else:
-                            x, y = 130, 420
+                            # Fallback: place signature in the "SIGNATURE OF PARTICIPANT" box area
+                            # Based on typical A4 PDF, the signature box is roughly in the lower third
+                            sig_x = 200
+                            sig_y = 155  # Above the "Signature:" line
                         
                         if signature_image_path.startswith('typed:'):
                             sig_text = signature_image_path.replace('typed:', '')
                             c.setFont("Times-Italic", 18)
                             c.setFillColorRGB(0, 0, 0.8)
-                            c.drawString(x, y, sig_text)
+                            c.drawString(sig_x, sig_y, sig_text)
                         elif os.path.exists(full_sig_path):
                             img = ImageReader(full_sig_path)
-                            c.drawImage(img, x, y - 30, width=200, height=50, mask='auto')
+                            c.drawImage(img, sig_x, sig_y, width=180, height=45, mask='auto')
+                            print(f"[embed_sig] Drew signature image at ({sig_x}, {sig_y})", file=sys.stderr)
+                        else:
+                            print(f"[embed_sig] Signature file not found: {full_sig_path}", file=sys.stderr)
                     
-                    # Add timestamp below signature box
+                    # ===== NAME, DATE, PLACE below the signature box =====
+                    # Since the PDF has no dedicated placeholders for these fields,
+                    # we place them in the white space below the signature box
+                    c.setFont("Helvetica-Bold", 9)
+                    c.setFillColorRGB(0, 0, 0)
+                    
+                    if field_positions.get('full_name'):
+                        x, y = field_positions['full_name']
+                        c.drawString(x, y, full_name)
+                    elif field_positions.get('signature'):
+                        # Place below signature
+                        sx, sy = field_positions['signature']
+                        c.drawString(sx - 100, sy - 55, f"Full Name: {full_name}")
+                        c.setFont("Helvetica", 9)
+                        c.drawString(sx - 100, sy - 70, f"Date: {signed_date}")
+                        c.drawString(sx - 100, sy - 85, f"Place: {location}")
+                    else:
+                        # Absolute fallback - place in the white space below signature area
+                        info_y = 95
+                        c.drawString(100, info_y, f"Full Name: {full_name}")
+                        c.setFont("Helvetica", 9)
+                        c.drawString(100, info_y - 15, f"Date: {signed_date}")
+                        c.drawString(100, info_y - 30, f"Place: {location}")
+                    
+                    # Add execution details for date/place if separate positions found
+                    if field_positions.get('date'):
+                        c.setFont("Helvetica-Bold", 9)
+                        x, y = field_positions['date']
+                        c.drawString(x, y, signed_date)
+                    
+                    if field_positions.get('place'):
+                        c.setFont("Helvetica-Bold", 9)
+                        x, y = field_positions['place']
+                        c.drawString(x, y, location)
+                    
+                    # Add timestamp in smaller text
                     c.setFont("Helvetica", 7)
                     c.setFillColorRGB(0.4, 0.4, 0.4)
                     
@@ -2941,10 +2948,17 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
                     else:
                         ist_time = ''
                     
-                    c.drawString(130, 285, f"Signed: {ist_time} IST | IP: {indemnity_request.ip_address or 'N/A'}")
+                    timestamp_y = 60
+                    if field_positions.get('signature'):
+                        sx, sy = field_positions['signature']
+                        timestamp_y = sy - 100
+                    
+                    c.drawString(100, timestamp_y, f"Digitally signed on {ist_time} IST | IP: {indemnity_request.ip_address or 'N/A'}")
                             
                 except Exception as sig_e:
-                    print(f"[warn] Failed to embed signature elements: {sig_e}")
+                    import traceback
+                    print(f"[warn] Failed to embed signature elements: {sig_e}", file=sys.stderr)
+                    traceback.print_exc(file=sys.stderr)
             
             c.save()
             packet.seek(0)
@@ -3168,28 +3182,25 @@ def uploaded_file(filename):
         if os.path.exists(alt_path):
             return send_from_directory(os.path.join(UPLOAD_FOLDER, 'kyc'), filename)
     
-    # List what's actually in UPLOAD_FOLDER
-    try:
-        if os.path.exists(UPLOAD_FOLDER):
-            kyc_dir = os.path.join(UPLOAD_FOLDER, 'kyc')
-            if os.path.exists(kyc_dir):
-                files = os.listdir(kyc_dir)[:5]
-                print(f"[UPLOADS] Files in kyc dir: {files}", file=sys.stderr)
-    except Exception as e:
-        print(f"[UPLOADS] Error listing: {e}", file=sys.stderr)
+    # Handle path mismatch: files saved to UPLOAD_FOLDER/subdir/ but URL expects kyc/subdir/
+    # e.g., file at /uploads/signatures/sig.png but URL says kyc/signatures/sig.png
+    if filename.startswith('kyc/'):
+        stripped = filename[4:]  # Remove 'kyc/' prefix
+        alt_path = os.path.join(UPLOAD_FOLDER, stripped)
+        print(f"[UPLOADS] Checking without kyc/ prefix: '{alt_path}' exists: {os.path.exists(alt_path)}", file=sys.stderr)
+        if os.path.exists(alt_path):
+            return send_from_directory(os.path.dirname(alt_path), os.path.basename(alt_path))
+    
+    # Try just the basename in various subdirectories
+    basename = os.path.basename(filename)
+    for subdir in ['kyc', 'kyc/signatures', 'kyc/signed', 'kyc/processed', 'signatures', 'signed', 'processed']:
+        alt_path = os.path.join(UPLOAD_FOLDER, subdir, basename)
+        if os.path.exists(alt_path):
+            print(f"[UPLOADS] Found via basename search: '{alt_path}'", file=sys.stderr)
+            return send_from_directory(os.path.join(UPLOAD_FOLDER, subdir), basename)
     
     print(f"[UPLOADS] File not found: '{filename}'", file=sys.stderr)
-    
-    # Return helpful error for debugging
-    return jsonify({
-        'error': 'File not found',
-        'requested_filename': filename,
-        'UPLOAD_FOLDER': UPLOAD_FOLDER,
-        'checked_paths': {
-            'direct': full_path,
-            'with_kyc': os.path.join(UPLOAD_FOLDER, 'kyc', filename) if not filename.startswith('kyc/') else None
-        }
-    }), 404
+    abort(404)
 
 
 def create_kyc_notifications(customer, event_type):
