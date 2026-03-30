@@ -3287,72 +3287,44 @@ def kyc_reprocess_pdfs():
 def kyc_debug_status():
     """Debug endpoint to check KYC system status and file storage."""
     import os
-    import json
     from flask import jsonify
     
-    # Check KYC Form
-    kyc_form = KYCForm.query.filter_by(is_active=True).first()
-    
-    # Check Indemnity Template
-    indemnity_template = IndemnityTemplate.query.filter_by(is_active=True).first()
-    
-    # Check file paths
-    render_upload_dir = os.environ.get('UPLOAD_PATH') or '/opt/render/project/src/uploads'
-    local_upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-    
-    # List files in both locations
-    render_files = []
-    local_files = []
-    
     try:
-        if os.path.exists(render_upload_dir):
-            for root, dirs, files in os.walk(render_upload_dir):
-                for f in files[:20]:  # Limit to 20 files
-                    full_path = os.path.join(root, f)
-                    rel_path = os.path.relpath(full_path, render_upload_dir)
-                    render_files.append(rel_path)
+        # Check KYC Form
+        kyc_form = KYCForm.query.filter_by(is_active=True).first()
+        
+        # Check Indemnity Template
+        indemnity_template = IndemnityTemplate.query.filter_by(is_active=True).first()
+        
+        # Check file paths
+        render_upload_dir = os.environ.get('UPLOAD_PATH') or '/opt/render/project/src/uploads'
+        local_upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+        
+        # List files in render disk
+        render_files = []
+        try:
+            if os.path.exists(render_upload_dir):
+                for f in os.listdir(os.path.join(render_upload_dir, 'kyc')) if os.path.exists(os.path.join(render_upload_dir, 'kyc')) else []:
+                    render_files.append(f)
+        except Exception as e:
+            render_files = [f"Error: {str(e)}"]
+        
+        return jsonify({
+            'kyc_form_exists': kyc_form is not None,
+            'indemnity_template_exists': indemnity_template is not None,
+            'indemnity_terms_pdf_path': indemnity_template.terms_pdf_path if indemnity_template else None,
+            'indemnity_pdf_path': indemnity_template.pdf_path if indemnity_template else None,
+            'storage': {
+                'UPLOAD_FOLDER': UPLOAD_FOLDER,
+                'UPLOAD_PATH_env': os.environ.get('UPLOAD_PATH'),
+                'render_dir': render_upload_dir,
+                'render_dir_exists': os.path.exists(render_upload_dir),
+                'kyc_dir_exists': os.path.exists(os.path.join(render_upload_dir, 'kyc')),
+                'files_in_kyc': render_files[:10]
+            }
+        })
     except Exception as e:
-        render_files = [f"Error: {str(e)}"]
-    
-    try:
-        if os.path.exists(local_upload_dir):
-            for root, dirs, files in os.walk(local_upload_dir):
-                for f in files[:20]:  # Limit to 20 files
-                    full_path = os.path.join(root, f)
-                    rel_path = os.path.relpath(full_path, local_upload_dir)
-                    local_files.append(rel_path)
-    except Exception as e:
-        local_files = [f"Error: {str(e)}"]
-    
-    return jsonify({
-        'kyc_form': {
-            'exists': kyc_form is not None,
-            'id': kyc_form.id if kyc_form else None,
-            'name': kyc_form.name if kyc_form else None,
-            'fields_count': len(json.loads(kyc_form.fields_config)) if kyc_form and kyc_form.fields_config else 0
-        },
-        'indemnity_template': {
-            'exists': indemnity_template is not None,
-            'id': indemnity_template.id if indemnity_template else None,
-            'title': indemnity_template.title if indemnity_template else None,
-            'terms_pdf_path': indemnity_template.terms_pdf_path if indemnity_template else None,
-            'pdf_path': indemnity_template.pdf_path if indemnity_template else None,
-            'terms_pdf_exists': os.path.exists(os.path.join(render_upload_dir, indemnity_template.terms_pdf_path.replace('uploads/', ''))) if indemnity_template and indemnity_template.terms_pdf_path else False,
-            'pdf_exists': os.path.exists(os.path.join(render_upload_dir, indemnity_template.pdf_path.replace('uploads/', ''))) if indemnity_template and indemnity_template.pdf_path else False
-        },
-        'storage': {
-            'UPLOAD_FOLDER': UPLOAD_FOLDER,
-            'UPLOAD_PATH_env': os.environ.get('UPLOAD_PATH'),
-            'render_upload_dir': render_upload_dir,
-            'local_upload_dir': local_upload_dir,
-            'render_dir_exists': os.path.exists(render_upload_dir),
-            'local_dir_exists': os.path.exists(local_upload_dir),
-            'render_files_count': len(render_files),
-            'render_files_sample': render_files[:10],
-            'local_files_count': len(local_files),
-            'local_files_sample': local_files[:10]
-        }
-    })
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
