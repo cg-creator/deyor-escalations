@@ -2585,12 +2585,24 @@ def process_indemnity_pdf(pdf_path, customer):
     }
     
     try:
-        # Full path to the PDF
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        full_pdf_path = os.path.join(base_dir, pdf_path) if not pdf_path.startswith('/') else pdf_path
+        # Resolve the source PDF path
+        # pdf_path is like 'uploads/kyc/indemnity_xxx.pdf'
+        # Strip 'uploads/' prefix to get the relative path within UPLOAD_FOLDER
+        import sys
+        relative_path = pdf_path.replace('uploads/', '', 1) if pdf_path.startswith('uploads/') else pdf_path
+        
+        # Try UPLOAD_FOLDER first (persistent disk on Render)
+        full_pdf_path = os.path.join(UPLOAD_FOLDER, relative_path)
+        print(f"[process_pdf] Trying UPLOAD_FOLDER path: {full_pdf_path}", file=sys.stderr)
         
         if not os.path.exists(full_pdf_path):
-            print(f"[warn] PDF not found: {full_pdf_path}")
+            # Fallback: try base_dir/uploads/ path
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            full_pdf_path = os.path.join(base_dir, pdf_path)
+            print(f"[process_pdf] Trying base_dir path: {full_pdf_path}", file=sys.stderr)
+        
+        if not os.path.exists(full_pdf_path):
+            print(f"[warn] PDF not found at any location for: {pdf_path}", file=sys.stderr)
             return pdf_path
         
         # Read the PDF
@@ -2656,7 +2668,7 @@ def process_indemnity_pdf(pdf_path, customer):
         
         # Create processed filename
         processed_filename = f"processed_{secure_filename(customer.name.replace(' ', '_'))}_{generate_token(8)}.pdf"
-        processed_dir = os.path.join(UPLOAD_FOLDER, 'processed')
+        processed_dir = os.path.join(UPLOAD_FOLDER, 'kyc', 'processed')
         os.makedirs(processed_dir, exist_ok=True)
         processed_path = os.path.join(processed_dir, processed_filename)
         
@@ -2664,7 +2676,7 @@ def process_indemnity_pdf(pdf_path, customer):
         with open(processed_path, 'wb') as output_file:
             writer.write(output_file)
         
-        # Return relative path
+        # Return relative path matching the /uploads/ route
         return os.path.join('uploads', 'kyc', 'processed', processed_filename)
         
     except Exception as e:
@@ -2797,7 +2809,7 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
         
         # Check if there's already a processed PDF for this customer
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        processed_dir = os.path.join(UPLOAD_FOLDER, 'processed')
+        processed_dir = os.path.join(UPLOAD_FOLDER, 'kyc', 'processed')
         
         # Look for existing processed PDF for this customer
         existing_processed = None
@@ -2811,7 +2823,12 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
         if existing_processed and os.path.exists(existing_processed):
             pdf_path = existing_processed
         else:
-            pdf_path = os.path.join(base_dir, template.pdf_path) if not template.pdf_path.startswith('/') else template.pdf_path
+            # Resolve template PDF path using UPLOAD_FOLDER
+            rel_path = template.pdf_path.replace('uploads/', '', 1) if template.pdf_path.startswith('uploads/') else template.pdf_path
+            pdf_path = os.path.join(UPLOAD_FOLDER, rel_path)
+            if not os.path.exists(pdf_path):
+                # Fallback to base_dir
+                pdf_path = os.path.join(base_dir, template.pdf_path)
         
         if not os.path.exists(pdf_path):
             print(f"[warn] PDF not found for signature embedding: {pdf_path}")
@@ -2893,7 +2910,11 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
                     
                     # ===== SIGNATURE OF PARTICIPANT BOX =====
                     if signature_image_path:
-                        full_sig_path = os.path.join(base_dir, signature_image_path) if not signature_image_path.startswith('/') else signature_image_path
+                        # Resolve signature image path
+                        sig_rel = signature_image_path.replace('uploads/', '', 1) if signature_image_path.startswith('uploads/') else signature_image_path
+                        full_sig_path = os.path.join(UPLOAD_FOLDER, sig_rel)
+                        if not os.path.exists(full_sig_path):
+                            full_sig_path = os.path.join(base_dir, signature_image_path) if not signature_image_path.startswith('/') else signature_image_path
                         
                         if 'signature' in field_positions:
                             x, y = field_positions['signature']
@@ -2941,7 +2962,7 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
         
         # Create signed PDF filename
         signed_filename = f"signed_{secure_filename(customer.name.replace(' ', '_'))}_{generate_token(8)}.pdf"
-        signed_dir = os.path.join(UPLOAD_FOLDER, 'signed')
+        signed_dir = os.path.join(UPLOAD_FOLDER, 'kyc', 'signed')
         os.makedirs(signed_dir, exist_ok=True)
         signed_path = os.path.join(signed_dir, signed_filename)
         
