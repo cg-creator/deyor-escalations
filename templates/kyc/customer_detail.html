@@ -175,7 +175,7 @@
                 
                 {% if sig_path %}
                   <div class="bg-white border-2 border-gray-200 rounded-lg p-2">
-                    <img src="/{{ sig_path }}" alt="Customer Signature" class="max-h-32 mx-auto" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="{{ url_for('uploaded_file', filename=sig_path.replace('uploads/', '')) }}" alt="Customer Signature" class="max-h-32 mx-auto" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <div style="display:none;" class="text-center text-sm text-gray-500 py-4">Unable to load signature image</div>
                   </div>
                 {% else %}
@@ -300,10 +300,10 @@
               </div>
             </div>
             <div class="flex space-x-2">
-              <a href="/{{ signed_pdf_path }}" target="_blank" class="px-3 py-1 bg-white border border-emerald-300 rounded-lg text-sm text-emerald-700 hover:bg-emerald-50 transition-colors">
+              <a href="{{ url_for('uploaded_file', filename=signed_pdf_path.replace('uploads/', '')) }}" target="_blank" class="px-3 py-1 bg-white border border-emerald-300 rounded-lg text-sm text-emerald-700 hover:bg-emerald-50 transition-colors">
                 View Signed
               </a>
-              <a href="/{{ signed_pdf_path }}" download class="px-3 py-1 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600 transition-colors">
+              <a href="{{ url_for('uploaded_file', filename=signed_pdf_path.replace('uploads/', '')) }}" download class="px-3 py-1 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600 transition-colors">
                 Download Signed
               </a>
             </div>
