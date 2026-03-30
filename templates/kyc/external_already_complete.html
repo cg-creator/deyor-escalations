@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Already Complete - Deyor{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+  <div class="container mx-auto px-4 max-w-2xl">
+    <div class="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+        <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900 mb-2">Already Complete</h1>
+      <p class="text-gray-600 mb-6">{{ message }}</p>
+      
+      {% if customer and customer.kyc_submitted and not customer.indemnity_signed %}
+      <div class="mt-4 mb-6">
+        <p class="text-sm text-gray-600 mb-3">You have completed your KYC but still need to sign the Terms & Conditions and Indemnity Agreement.</p>
+        <a href="{{ url_for('kyc_external_indemnity', token=customer.indemnity_token) }}" 
+           class="inline-flex items-center px-6 py-3 bg-rose-500 hover:bg-rose-600 text-white font-semibold rounded-lg transition-colors">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+          </svg>
+          Sign Documents Now
+        </a>
+      </div>
+      {% endif %}
+      
+      <div class="text-sm text-gray-500">
+        <p>If you need to make changes or have questions, please contact our support team.</p>
+        <p class="mt-2">Email: <a href="mailto:care@deyor.in" class="text-rose-500 hover:text-rose-600">care@deyor.in</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

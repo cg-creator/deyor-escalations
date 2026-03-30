@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}KYC Submission - {{ customer.name }} - Deyor{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <div class="mb-6">
+    <a href="{{ url_for('kyc_customers') }}" class="text-gray-500 hover:text-gray-700 text-sm flex items-center mb-4">
+      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Back to Customers
+    </a>
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">KYC Submission</h1>
+        <p class="text-gray-600 mt-1">{{ customer.name }} | {{ customer.email }}</p>
+      </div>
+      <div class="flex space-x-2">
+        {% if customer.kyc_submitted %}
+        <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+          <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          KYC Complete
+        </span>
+        {% endif %}
+        {% if customer.indemnity_signed %}
+        <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+          <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          Indemnity Signed
+        </span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if customer.submission %}
+  <div class="space-y-6">
+    <!-- Customer Info -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Customer Information</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p class="text-sm text-gray-500">Name</p>
+          <p class="font-medium text-gray-900">{{ customer.name }}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500">Email</p>
+          <p class="font-medium text-gray-900">{{ customer.email }}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500">Phone</p>
+          <p class="font-medium text-gray-900">{{ customer.phone }}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500">Trip Type</p>
+          <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ 'bg-blue-100 text-blue-800' if customer.trip_type == 'international' else 'bg-green-100 text-green-800' }}">
+            {{ customer.trip_type | title }}
+          </span>
+        </div>
+        {% if customer.booking_id %}
+        <div>
+          <p class="text-sm text-gray-500">Booking ID</p>
+          <p class="font-medium text-gray-900">{{ customer.booking_id }}</p>
+        </div>
+        {% endif %}
+        <div>
+          <p class="text-sm text-gray-500">Submitted</p>
+          <p class="font-medium text-gray-900">{{ customer.kyc_submitted_at | fmt_ist }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- KYC Form Data -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">KYC Details</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for key, value in form_data.items() %}
+        <div>
+          <p class="text-sm text-gray-500">{{ key | replace('_', ' ') | title }}</p>
+          <p class="font-medium text-gray-900">{{ value or '—' }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Documents -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Uploaded Documents</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for doc_type, path in document_paths.items() %}
+        <div class="border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+          <div class="flex items-center">
+            <svg class="w-8 h-8 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+            </svg>
+            <div>
+              <p class="font-medium text-gray-900">{{ doc_type | replace('_', ' ') | title }}</p>
+              <p class="text-xs text-gray-500">{{ path.split('/')[-1] }}</p>
+            </div>
+          </div>
+          <a href="/{{ path }}" target="_blank" class="text-rose-500 hover:text-rose-600 text-sm font-medium">
+            View
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Indemnity Info -->
+    {% if customer.indemnity_signed %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Indemnity Agreement</h2>
+      <div class="flex items-center p-4 bg-green-50 rounded-lg">
+        <svg class="w-8 h-8 text-green-500 mr-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+        <div>
+          <p class="font-medium text-green-900">Indemnity Agreement Signed</p>
+          <p class="text-sm text-green-700">Signed on {{ customer.indemnity_signed_at | fmt_ist }}</p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="bg-gray-50 rounded-xl p-8 text-center">
+    <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>
+    <h3 class="text-lg font-medium text-gray-900 mb-2">No submission found</h3>
+    <p class="text-gray-500">This customer has not submitted their KYC form yet.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

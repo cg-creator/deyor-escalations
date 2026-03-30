@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}KYC Form Fields - Deyor{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <div class="mb-6">
+    <a href="{{ url_for('kyc_dashboard') }}" class="text-gray-500 hover:text-gray-700 text-sm flex items-center mb-4">
+      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Back to Dashboard
+    </a>
+    <h1 class="text-2xl font-semibold text-gray-900">KYC Form Fields</h1>
+    <p class="text-gray-600 mt-1">These fields will be collected from all passengers</p>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <div class="mb-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-2">Default Fields</h2>
+      <p class="text-sm text-gray-600">The following fields are always included in the KYC form:</p>
+    </div>
+
+    <div class="space-y-4 mb-10">
+      <!-- Domestic -->
+      <div class="flex items-center p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-100 shadow-sm">
+        <div class="flex-shrink-0 w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-200">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+          </svg>
+        </div>
+        <div class="ml-4 flex-1">
+          <span class="font-semibold text-gray-900 text-lg">Domestic Trips</span>
+          <span class="inline-flex px-2 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700 ml-2">Required</span>
+          <p class="text-sm text-gray-500 mt-1">Aadhaar or PAN <span class="text-emerald-600 font-medium">+</span> Driving License</p>
+        </div>
+      </div>
+      
+      <!-- International -->
+      <div class="flex items-center p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+        <div class="flex-shrink-0 w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+          </svg>
+        </div>
+        <div class="ml-4 flex-1">
+          <span class="font-semibold text-blue-900 text-lg">International Trips</span>
+          <span class="inline-flex px-2 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 ml-2">Required</span>
+          <p class="text-sm text-blue-600 mt-1">Passport <span class="text-blue-700 font-medium">+</span> PAN Card</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t border-gray-200 pt-8 mb-8">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Form Fields</h2>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <p class="font-medium text-gray-900">Personal Information</p>
+          <ul class="text-sm text-gray-600 mt-2 space-y-1">
+            <li>• Full Name</li>
+            <li>• Phone Number</li>
+            <li>• Email Address</li>
+            <li>• Nationality</li>
+            <li>• Current Address</li>
+          </ul>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <p class="font-medium text-gray-900">Professional Details</p>
+          <ul class="text-sm text-gray-600 mt-2 space-y-1">
+            <li>• Company Name</li>
+            <li>• Designation</li>
+          </ul>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <p class="font-medium text-gray-900">Emergency Contact</p>
+          <ul class="text-sm text-gray-600 mt-2 space-y-1">
+            <li>• Contact Name</li>
+            <li>• Contact Number</li>
+            <li>• Relationship</li>
+          </ul>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <p class="font-medium text-gray-900">Other</p>
+          <ul class="text-sm text-gray-600 mt-2 space-y-1">
+            <li>• How did you hear about us?</li>
+          </ul>
+        </div>
+      </div>
+      <p class="text-sm text-gray-500 mt-4"><strong>Note:</strong> ID Type and ID Number are not required in the form as documents are uploaded directly.</p>
+    </div>
+
+    <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+      <a href="{{ url_for('kyc_dashboard') }}" class="text-gray-600 hover:text-gray-800 font-medium">
+        Back to Dashboard
+      </a>
+      <div class="flex space-x-3">
+        <a href="{{ url_for('kyc_customers') }}" class="inline-flex items-center px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-medium rounded-lg transition-colors">
+          View Customers
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

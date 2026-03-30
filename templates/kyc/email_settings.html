@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Email Settings - KYC - Deyor{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <div class="mb-6">
+    <a href="{{ url_for('kyc_dashboard') }}" class="text-gray-500 hover:text-gray-700 text-sm flex items-center mb-4">
+      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Back to Dashboard
+    </a>
+    <h1 class="text-2xl font-semibold text-gray-900">KYC Email Settings</h1>
+    <p class="text-gray-600 mt-1">Configure SMTP settings for care@deyor.in to send KYC and Indemnity request emails</p>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+      <svg class="w-5 h-5 mr-2 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+      SMTP Configuration for care@deyor.in
+    </h2>
+    
+    <form action="{{ url_for('kyc_email_settings') }}" method="POST" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label for="smtp_host" class="block text-sm font-medium text-gray-700 mb-1">SMTP Host *</label>
+          <input type="text" name="smtp_host" id="smtp_host" required
+                 value="{{ settings.smtp_host if settings else '' }}"
+                 placeholder="smtp.gmail.com or smtp.zoho.in"
+                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500">
+          <p class="text-xs text-gray-500 mt-1">e.g., smtp.zoho.in for Zoho Mail</p>
+        </div>
+        
+        <div>
+          <label for="smtp_port" class="block text-sm font-medium text-gray-700 mb-1">SMTP Port *</label>
+          <input type="number" name="smtp_port" id="smtp_port" required
+                 value="{{ settings.smtp_port if settings else '587' }}"
+                 placeholder="587"
+                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500">
+          <p class="text-xs text-gray-500 mt-1">Usually 587 (TLS) or 465 (SSL)</p>
+        </div>
+        
+        <div>
+          <label for="smtp_user" class="block text-sm font-medium text-gray-700 mb-1">SMTP Username (Email) *</label>
+          <input type="email" name="smtp_user" id="smtp_user" required
+                 value="{{ settings.smtp_user if settings else 'care@deyor.in' }}"
+                 placeholder="care@deyor.in"
+                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500">
+          <p class="text-xs text-gray-500 mt-1">This will be the 'From' email address</p>
+        </div>
+        
+        <div>
+          <label for="smtp_pass" class="block text-sm font-medium text-gray-700 mb-1">SMTP Password / App Password *</label>
+          <input type="password" name="smtp_pass" id="smtp_pass" required
+                 value="{{ settings.smtp_pass if settings else '' }}"
+                 placeholder="Your email password or app-specific password"
+                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500">
+          <p class="text-xs text-gray-500 mt-1">Use app-specific password if 2FA is enabled</p>
+        </div>
+      </div>
+
+      <div class="border-t border-gray-200 pt-6">
+        <h3 class="text-sm font-medium text-gray-900 mb-3">Test Email Configuration</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label for="test_email" class="block text-sm font-medium text-gray-700 mb-1">Test Email Address</label>
+            <input type="email" name="test_email" id="test_email"
+                   value="{{ current_user.email }}"
+                   placeholder="your@email.com"
+                   class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500">
+            <p class="text-xs text-gray-500 mt-1">Defaults to your account email</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="border-t border-gray-200 pt-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-medium text-gray-900">Connection Security</h3>
+            <p class="text-xs text-gray-500 mt-1">Enable TLS encryption (recommended)</p>
+          </div>
+          <div class="flex items-center">
+            <input type="checkbox" name="use_tls" id="use_tls" checked
+                   class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+            <label for="use_tls" class="ml-2 text-sm text-gray-700">Use TLS</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+        <a href="{{ url_for('kyc_dashboard') }}" class="text-gray-600 hover:text-gray-800 font-medium">
+          Cancel
+        </a>
+        <div class="flex space-x-3">
+          <button type="submit" name="test" value="1" formaction="{{ url_for('kyc_test_email') }}"
+                  class="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+            Test Email
+          </button>
+          <button type="submit" class="inline-flex items-center px-6 py-2 bg-rose-500 hover:bg-rose-600 text-white font-medium rounded-lg transition-colors">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Email Template Preview -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+      <svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      Email Template Preview
+    </h2>
+    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+      <p class="text-sm text-gray-500 mb-2">Subject: <span class="font-medium text-gray-700">Complete Your KYC and Sign Required Documents - Deyor</span></p>
+      <div class="bg-white rounded border border-gray-200 p-4 font-mono text-sm text-gray-700 whitespace-pre-line">
+Dear [Customer Name],
+
+Thank you for booking your [Domestic/International] trip with Deyor!
+
+📝 Important: KYC completion is mandatory and must be done at least 7 days prior to your trip date.
+
+To ensure a smooth travel experience, please complete the following:
+
+1️⃣ Complete your KYC form:
+   [KYC Form Link]
+
+2️⃣ Review and sign the Terms & Conditions and Indemnity Agreement:
+   [Indemnity Signing Link]
+
+Both steps are mandatory and must be completed within 7 days before your trip. Failure to complete these documents may result in cancellation of your booking without refund.
+
+If you have any questions or need assistance, please contact our support team:
+📧 care@deyor.in
+📞 +91 9870417123
+
+We look forward to hosting you on an amazing adventure!
+
+Best regards,
+Team Deyor
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

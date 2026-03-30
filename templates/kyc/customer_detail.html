@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+
+{% block title %}{{ customer.name }} - Customer Details - Deyor{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-6xl">
+  <!-- Header -->
+  <div class="mb-6">
+    <a href="{{ url_for('kyc_customers') }}" class="text-gray-500 hover:text-gray-700 text-sm flex items-center mb-4">
+      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Back to Customers
+    </a>
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div class="flex items-center">
+        <div class="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white font-bold text-xl sm:text-2xl shadow-lg shadow-rose-200 flex-shrink-0">
+          {{ customer.name[0] | upper }}
+        </div>
+        <div class="ml-3 sm:ml-4 min-w-0">
+          <h1 class="text-xl sm:text-2xl font-bold text-gray-900 truncate">{{ customer.name }}</h1>
+          <p class="text-sm text-gray-600 truncate">{{ customer.email }} | {{ customer.phone }}</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {% if not customer.kyc_submitted or not customer.indemnity_signed %}
+        <form action="{{ url_for('kyc_customer_send', customer_id=customer.id) }}" method="POST" class="inline">
+          <button type="submit" class="inline-flex items-center px-3 sm:px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-medium rounded-lg transition-colors text-sm">
+            <svg class="w-4 h-4 mr-1.5 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+            Send Email
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <p class="text-sm text-gray-500 mb-1">Trip Type</p>
+      <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full {{ 'bg-blue-100 text-blue-800' if customer.trip_type == 'international' else 'bg-green-100 text-green-800' }}">
+        {{ customer.trip_type | title }}
+      </span>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <p class="text-sm text-gray-500 mb-1">Trip Date</p>
+      <p class="text-lg font-semibold text-gray-900">
+        {% if customer.trip_date %}
+          {{ customer.trip_date.strftime('%d-%m-%Y') }}
+          {% set days = customer.get_days_until_trip() %}
+          {% if days is not none %}
+            <span class="text-sm font-normal {{ 'text-red-600' if days < 0 else 'text-amber-600' if days <= 7 else 'text-green-600' }}">
+              ({{ days }} days left)
+            </span>
+          {% endif %}
+        {% else %}
+          Not set
+        {% endif %}
+      </p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <p class="text-sm text-gray-500 mb-1">KYC Status</p>
+      {% if customer.kyc_submitted %}
+      <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+        Completed {{ customer.kyc_submitted_at | fmt_ist('%d-%m-%Y %I:%M %p') if customer.kyc_submitted_at }}
+      </span>
+      {% else %}
+      <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800">
+        Pending
+      </span>
+      {% endif %}
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <p class="text-sm text-gray-500 mb-1">Indemnity Status</p>
+      {% if customer.indemnity_signed %}
+      <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+        Signed {{ customer.indemnity_signed_at | fmt_ist('%d-%m-%Y %I:%M %p') if customer.indemnity_signed_at }}
+      </span>
+      {% else %}
+      <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800">
+        Pending
+      </span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <!-- Left Column: KYC Form Data -->
+    <div class="space-y-6">
+      {% if form_data %}
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-rose-50 to-white">
+          <h3 class="text-lg font-bold text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            KYC Form Data
+          </h3>
+        </div>
+        <div class="p-6 space-y-4">
+          {% for key, value in form_data.items() %}
+          <div class="flex justify-between items-start py-2 border-b border-gray-100 last:border-0">
+            <span class="text-sm text-gray-500 capitalize">{{ key.replace('_', ' ') }}</span>
+            <span class="text-sm font-medium text-gray-900 text-right">{{ value or '-' }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-100">
+          <button onclick="downloadKYCData()" class="inline-flex items-center text-sm text-rose-600 hover:text-rose-700 font-medium">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m0 0l-4 4m4-4v12"/>
+            </svg>
+            Download KYC Data (JSON)
+          </button>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Indemnity Signing Details -->
+      {% if indemnity_request %}
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white">
+          <h3 class="text-lg font-bold text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+            </svg>
+            Signing Details
+          </h3>
+        </div>
+        <div class="p-6 space-y-4">
+          <div class="flex justify-between items-start py-2 border-b border-gray-100">
+            <span class="text-sm text-gray-500 flex-shrink-0 w-32">T&C Accepted At</span>
+            <span class="text-sm font-medium text-gray-900 text-right">{{ indemnity_request.terms_accepted_at | fmt_ist('%d-%m-%Y %I:%M %p') if indemnity_request.terms_accepted_at else '-' }}</span>
+          </div>
+          <div class="flex justify-between items-start py-2 border-b border-gray-100">
+            <span class="text-sm text-gray-500 flex-shrink-0 w-32">T&C Location</span>
+            <span class="text-sm font-medium text-gray-900 font-mono text-right">{{ indemnity_request.terms_accepted_location or '-' }}</span>
+          </div>
+          <div class="flex justify-between items-start py-2 border-b border-gray-100">
+            <span class="text-sm text-gray-500 flex-shrink-0 w-32">Indemnity Signed At</span>
+            <span class="text-sm font-medium text-gray-900 text-right">{{ indemnity_request.signed_at | fmt_ist('%d-%m-%Y %I:%M %p') if indemnity_request.signed_at else '-' }}</span>
+          </div>
+          <div class="flex justify-between items-start py-2 border-b border-gray-100">
+            <span class="text-sm text-gray-500 flex-shrink-0 w-32">IP Address</span>
+            <span class="text-sm font-medium text-gray-900 font-mono text-right">{{ indemnity_request.ip_address or '-' }}</span>
+          </div>
+          <div class="py-2 border-b border-gray-100">
+            <div class="flex justify-between items-start mb-2">
+              <span class="text-sm text-gray-500 flex-shrink-0 w-32">Signature</span>
+            </div>
+            {% if indemnity_request.signature_data %}
+              {% if 'type:typed' in indemnity_request.signature_data %}
+                {% set typed_parts = indemnity_request.signature_data.split('type:typed') %}
+                {% if typed_parts|length > 1 %}
+                  {% set typed_data = typed_parts[1].split('|')[0] %}
+                  <div class="bg-white border-2 border-gray-200 rounded-lg p-4 text-center">
+                    <p class="text-2xl font-serif text-gray-900" style="font-family: 'Brush Script MT', cursive, serif;">{{ typed_data }}</p>
+                    <p class="text-xs text-gray-500 mt-1">Typed Signature</p>
+                  </div>
+                {% endif %}
+              {% else %}
+                {# Extract img path from signature_data and try variations #}
+                {% set sig_path = '' %}
+                {% if 'img:' in indemnity_request.signature_data %}
+                  {% set img_parts = indemnity_request.signature_data.split('img:') %}
+                  {% if img_parts|length > 1 %}
+                    {% set sig_path = img_parts[1].split('|')[0] %}
+                  {% endif %}
+                {% endif %}
+                
+                {% if sig_path %}
+                  <div class="bg-white border-2 border-gray-200 rounded-lg p-2">
+                    <img src="/{{ sig_path }}" alt="Customer Signature" class="max-h-32 mx-auto" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div style="display:none;" class="text-center text-sm text-gray-500 py-4">Unable to load signature image</div>
+                  </div>
+                {% else %}
+                  <div class="bg-gray-100 rounded-lg p-3">
+                    <span class="text-xs font-medium text-gray-500">No signature image path found</span>
+                  </div>
+                {% endif %}
+              {% endif %}
+            {% else %}
+              <div class="bg-gray-100 rounded-lg p-3">
+                <span class="text-xs font-medium text-gray-500">No signature available</span>
+              </div>
+            {% endif %}
+          </div>
+          <div class="py-2 border-b border-gray-100">
+            <div class="flex justify-between items-start mb-2">
+              <span class="text-sm text-gray-500 flex-shrink-0 w-32">Signature Data</span>
+            </div>
+            <div class="bg-gray-100 rounded-lg p-3 overflow-x-auto">
+              <span class="text-xs font-medium text-gray-900 font-mono whitespace-pre-wrap break-all">{{ indemnity_request.signature_data or '-' }}</span>
+            </div>
+          </div>
+          {% if indemnity_request.user_agent %}
+          <div class="py-2">
+            <div class="flex justify-between items-start mb-2">
+              <span class="text-sm text-gray-500 flex-shrink-0 w-32">Device</span>
+            </div>
+            <div class="bg-gray-100 rounded-lg p-3 overflow-x-auto">
+              <span class="text-xs font-medium text-gray-900 whitespace-pre-wrap break-all">{{ indemnity_request.user_agent }}</span>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Right Column: Documents -->
+    <div class="space-y-6">
+      {% if document_paths %}
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-white">
+          <h3 class="text-lg font-bold text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3 3 0 01-3 3m5-3a3 3 0 013 3m-3-3h3"/>
+            </svg>
+            Uploaded Documents
+          </h3>
+        </div>
+        <div class="p-6 space-y-3">
+          {% for doc_type, doc_path in document_paths.items() %}
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-gray-50 rounded-lg gap-3">
+            <div class="flex items-center min-w-0 flex-1">
+              <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm flex-shrink-0">
+                {% if doc_path.endswith('.pdf') %}
+                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                </svg>
+                {% else %}
+                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                {% endif %}
+              </div>
+              <div class="ml-3 min-w-0">
+                <p class="text-sm font-medium text-gray-900 capitalize truncate">{{ doc_type.replace('_', ' ') }}</p>
+                <p class="text-xs text-gray-500 truncate">{{ doc_path.split('/')[-1] }}</p>
+              </div>
+            </div>
+            <div class="flex space-x-2 flex-shrink-0 w-full sm:w-auto">
+              <a href="{{ url_for('uploaded_file', filename=doc_path.replace('uploads/', '')) }}" target="_blank" class="flex-1 sm:flex-none px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap text-center">
+                View
+              </a>
+              <a href="{{ url_for('uploaded_file', filename=doc_path.replace('uploads/', '')) }}" download class="flex-1 sm:flex-none px-3 py-1.5 bg-rose-500 text-white rounded-lg text-sm hover:bg-rose-600 transition-colors whitespace-nowrap text-center">
+                Download
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-100">
+          <button onclick="downloadAllDocuments()" class="inline-flex items-center text-sm text-rose-600 hover:text-rose-700 font-medium">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m0 0l-4 4m4-4v12"/>
+            </svg>
+            Download All Documents
+          </button>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Indemnity PDF -->
+      {% if active_template and active_template.pdf_path %}
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-white">
+          <h3 class="text-lg font-bold text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Indemnity Agreement
+            {% if customer.indemnity_signed %}
+            <span class="ml-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">SIGNED</span>
+            {% endif %}
+          </h3>
+        </div>
+        <div class="p-6">
+          {% if customer.indemnity_signed and indemnity_request and 'pdf:' in indemnity_request.signature_data %}
+          <!-- Show signed PDF -->
+          {% set pdf_parts = indemnity_request.signature_data.split('pdf:') %}
+          {% if pdf_parts|length > 1 %}
+          {% set signed_pdf_path = pdf_parts[1] %}
+          <div class="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-lg mb-3">
+            <div class="flex items-center">
+              <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+                <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm font-medium text-gray-900">{{ active_template.title }} (Signed)</p>
+                <p class="text-xs text-emerald-600">Legally signed document with embedded signature</p>
+              </div>
+            </div>
+            <div class="flex space-x-2">
+              <a href="/{{ signed_pdf_path }}" target="_blank" class="px-3 py-1 bg-white border border-emerald-300 rounded-lg text-sm text-emerald-700 hover:bg-emerald-50 transition-colors">
+                View Signed
+              </a>
+              <a href="/{{ signed_pdf_path }}" download class="px-3 py-1 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600 transition-colors">
+                Download Signed
+              </a>
+            </div>
+          </div>
+          {% endif %}
+          {% endif %}
+          
+          <!-- Original Template PDF -->
+          <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div class="flex items-center">
+              <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
+                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm font-medium text-gray-900">{{ active_template.title }} (Template)</p>
+                <p class="text-xs text-gray-500">Original indemnity agreement template</p>
+              </div>
+            </div>
+            <div class="flex space-x-2">
+              <a href="{{ url_for('uploaded_file', filename=active_template.pdf_path.replace('uploads/', '')) }}" target="_blank" class="px-3 py-1 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                View
+              </a>
+              <a href="{{ url_for('uploaded_file', filename=active_template.pdf_path.replace('uploads/', '')) }}" download class="px-3 py-1 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition-colors">
+                Download
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+// Safely parse template data
+const kycFormData = JSON.parse('{{ form_data | tojson | safe }}');
+const kycDocumentPaths = JSON.parse('{{ document_paths | tojson | safe }}');
+const customerName = '{{ customer.name | replace(" ", "_") }}';
+
+function downloadKYCData() {
+  const blob = new Blob([JSON.stringify(kycFormData, null, 2)], { type: 'application/json' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = customerName + '_KYC_Data.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+function downloadAllDocuments() {
+  let delay = 0;
+  for (const [key, path] of Object.entries(kycDocumentPaths)) {
+    setTimeout(() => {
+      const link = document.createElement('a');
+      link.href = '/uploads/' + path.replace('uploads/', '');
+      link.download = key + '_' + path.split('/').pop();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }, delay);
+    delay += 500;
+  }
+}
+</script>
+{% endblock %}

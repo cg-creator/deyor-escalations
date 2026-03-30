@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}KYC Dashboard - Deyor{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <!-- Header -->
+  <div class="mb-8">
+    <h1 class="text-3xl font-semibold text-gray-900 mb-2">KYC Dashboard</h1>
+    <p class="text-gray-600">Manage customer verifications and document signing</p>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="bg-gradient-to-br from-rose-500 to-pink-600 rounded-2xl shadow-lg shadow-rose-200 p-6 text-white hover:shadow-xl transition-all transform hover:-translate-y-1">
+      <div class="flex items-center justify-between mb-4">
+        <div class="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+          </svg>
+        </div>
+        <span class="text-sm font-medium text-white/80">Total</span>
+      </div>
+      <p class="text-4xl font-bold">{{ total }}</p>
+      <p class="text-sm text-white/80 mt-1">Total Customers</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-lg shadow-emerald-200 p-6 text-white hover:shadow-xl transition-all transform hover:-translate-y-1">
+      <div class="flex items-center justify-between mb-4">
+        <div class="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <span class="text-sm font-medium text-white/80">{{ kyc_completed }}/{{ total }}</span>
+      </div>
+      <p class="text-4xl font-bold">{{ kyc_completed }}</p>
+      <p class="text-sm text-white/80 mt-1">KYC Completed</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg shadow-blue-200 p-6 text-white hover:shadow-xl transition-all transform hover:-translate-y-1">
+      <div class="flex items-center justify-between mb-4">
+        <div class="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+          </svg>
+        </div>
+        <span class="text-sm font-medium text-white/80">{{ indemnity_signed }}/{{ total }}</span>
+      </div>
+      <p class="text-4xl font-bold">{{ indemnity_signed }}</p>
+      <p class="text-sm text-white/80 mt-1">Indemnity Signed</p>
+    </div>
+
+    <div class="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl shadow-lg shadow-amber-200 p-6 text-white hover:shadow-xl transition-all transform hover:-translate-y-1">
+      <div class="flex items-center justify-between mb-4">
+        <div class="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <span class="text-sm font-medium text-white/80">Pending</span>
+      </div>
+      <p class="text-4xl font-bold">{{ pending_kyc + pending_indemnity }}</p>
+      <p class="text-sm text-white/80 mt-1">{{ pending_kyc }} KYC + {{ pending_indemnity }} Indemnity</p>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="bg-gradient-to-r from-gray-50 to-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>
+    <div class="flex flex-wrap gap-3">
+      <a href="{{ url_for('kyc_customer_new') }}" class="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-semibold rounded-xl shadow-md shadow-rose-200 transition-all hover:shadow-lg transform hover:-translate-y-0.5">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Customer
+      </a>
+      <a href="{{ url_for('kyc_customers_bulk') }}" class="inline-flex items-center px-5 py-2.5 bg-white border-2 border-gray-200 hover:border-rose-300 hover:bg-rose-50 text-gray-700 hover:text-rose-600 font-semibold rounded-xl transition-all">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+        </svg>
+        Bulk Upload
+      </a>
+      <a href="{{ url_for('kyc_customers') }}" class="inline-flex items-center px-5 py-2.5 bg-white border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700 hover:text-blue-600 font-semibold rounded-xl transition-all">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+        View All Customers
+      </a>
+      <a href="{{ url_for('kyc_form_builder') }}" class="inline-flex items-center px-5 py-2.5 bg-white border-2 border-gray-200 hover:border-purple-300 hover:bg-purple-50 text-gray-700 hover:text-purple-600 font-semibold rounded-xl transition-all">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        Form Fields
+      </a>
+      <a href="{{ url_for('kyc_templates') }}" class="inline-flex items-center px-5 py-2.5 bg-white border-2 border-gray-200 hover:border-emerald-300 hover:bg-emerald-50 text-gray-700 hover:text-emerald-600 font-semibold rounded-xl transition-all">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        T&Cs & Indemnity
+      </a>
+      <a href="{{ url_for('kyc_email_settings') }}" class="inline-flex items-center px-5 py-2.5 bg-white border-2 border-gray-200 hover:border-orange-300 hover:bg-orange-50 text-gray-700 hover:text-orange-600 font-semibold rounded-xl transition-all">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        Email Settings
+      </a>
+    </div>
+  </div>
+
+  <!-- Active Template Status -->
+  {% if active_template %}
+  <div class="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl p-5 mb-8 shadow-lg shadow-emerald-200 text-white">
+    <div class="flex items-center">
+      <div class="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <div class="ml-4">
+        <p class="text-lg font-bold">Active Indemnity Template</p>
+        <p class="text-emerald-100">"{{ active_template.title }}" is ready and will be sent to customers</p>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="bg-gradient-to-r from-amber-400 to-orange-500 rounded-2xl p-5 mb-8 shadow-lg shadow-amber-200 text-white">
+    <div class="flex items-center">
+      <div class="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+      </div>
+      <div class="ml-4">
+        <p class="text-lg font-bold">No Active Template</p>
+        <p class="text-amber-100"><a href="{{ url_for('kyc_template_new') }}" class="underline text-white hover:text-amber-50">Upload T&Cs and Indemnity</a> before sending to customers</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Critical Alerts: Trip Started but KYC Not Done -->
+  {% if critical_customers %}
+  <div class="bg-gradient-to-r from-red-600 to-rose-600 rounded-2xl p-5 mb-6 shadow-lg shadow-red-200 text-white animate-pulse">
+    <div class="flex items-center mb-4">
+      <div class="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <div class="ml-4">
+        <p class="text-lg font-bold">🚨 CRITICAL ALERT: {{ critical_customers|length }} Customer(s) Trip Started but KYC Not Completed!</p>
+        <p class="text-red-100">Immediate action required. These customers have started their trip without completing KYC.</p>
+      </div>
+    </div>
+    <div class="space-y-2">
+      {% for customer in critical_customers %}
+      <div class="bg-white/10 rounded-lg p-3 flex items-center justify-between">
+        <div class="flex items-center">
+          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white font-medium text-sm mr-3">
+            {{ customer.name[0] | upper }}
+          </div>
+          <div>
+            <p class="font-medium">{{ customer.name }}</p>
+            <p class="text-sm text-red-100">Trip Date: {{ customer.trip_date.strftime('%d-%m-%Y') }} (Started)</p>
+            <p class="text-xs text-red-200">
+              {% if not customer.kyc_submitted %}❌ KYC Pending{% endif %}
+              {% if not customer.indemnity_signed %}❌ Indemnity Pending{% endif %}
+            </p>
+          </div>
+        </div>
+        <a href="{{ url_for('kyc_customer_detail', customer_id=customer.id) }}" class="px-4 py-2 bg-white text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors shadow-sm">View Details</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Urgent Alerts: Trip Within 7 Days -->
+  {% if urgent_customers %}
+  <div class="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-5 mb-6 shadow-lg shadow-amber-200 text-white">
+    <div class="flex items-center mb-4">
+      <div class="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <div class="ml-4">
+        <p class="text-lg font-bold">⚠️ URGENT: {{ urgent_customers|length }} Customer(s) Trip Within 7 Days - KYC Pending</p>
+        <p class="text-amber-100">These customers need to complete KYC before their trip.</p>
+      </div>
+    </div>
+    <div class="space-y-2">
+      {% for customer in urgent_customers %}
+      <div class="bg-white/10 rounded-lg p-3 flex items-center justify-between">
+        <div class="flex items-center">
+          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white font-medium text-sm mr-3">
+            {{ customer.name[0] | upper }}
+          </div>
+          <div>
+            <p class="font-medium">{{ customer.name }}</p>
+            <p class="text-sm text-amber-100">Trip in {{ customer.get_days_until_trip() }} days ({{ customer.trip_date.strftime('%d-%m-%Y') }})</p>
+            <p class="text-xs text-amber-200">
+              {% if not customer.kyc_submitted %}⏳ KYC Pending{% endif %}
+              {% if not customer.indemnity_signed %}⏳ Indemnity Pending{% endif %}
+            </p>
+          </div>
+        </div>
+        <div class="flex space-x-2">
+          <form action="{{ url_for('kyc_customer_send', customer_id=customer.id) }}" method="POST" class="inline">
+            <button type="submit" class="px-4 py-2 bg-white text-orange-600 rounded-xl text-sm font-medium hover:bg-orange-50 transition-colors shadow-sm">Send Reminder</button>
+          </form>
+          <a href="{{ url_for('kyc_customer_detail', customer_id=customer.id) }}" class="px-4 py-2 bg-white/20 text-white rounded-xl text-sm font-medium hover:bg-white/30 transition-colors">View</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent Customers -->
+  {% if customers %}
+  <div class="bg-white rounded-2xl shadow-lg shadow-gray-100 border border-gray-100 overflow-hidden">
+    <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white">
+      <h3 class="text-xl font-bold text-gray-900">Recent Customers</h3>
+      <a href="{{ url_for('kyc_customers') }}" class="inline-flex items-center px-4 py-2 bg-rose-100 hover:bg-rose-200 text-rose-700 font-semibold rounded-lg transition-colors text-sm">
+        View all
+        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </a>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trip Type</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KYC Status</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Indemnity</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          {% for customer in customers[:10] %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="flex items-center">
+                <div class="h-10 w-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-medium text-sm">
+                  {{ customer.name[0] | upper }}
+                </div>
+                <div class="ml-4">
+                  <div class="text-sm font-medium text-gray-900">{{ customer.name }}</div>
+                  <div class="text-sm text-gray-500">{{ customer.email }}</div>
+                </div>
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ 'bg-blue-100 text-blue-800' if customer.trip_type == 'international' else 'bg-green-100 text-green-800' }}">
+                {{ customer.trip_type | title }}
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              {% if customer.kyc_submitted %}
+              <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Complete
+              </span>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                Pending
+              </span>
+              {% endif %}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              {% if customer.indemnity_signed %}
+              <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                Signed
+              </span>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                Pending
+              </span>
+              {% endif %}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+              <div class="flex space-x-2">
+                {% if not customer.kyc_submitted or not customer.indemnity_signed %}
+                <form action="{{ url_for('kyc_customer_send', customer_id=customer.id) }}" method="POST" class="inline">
+                  <button type="submit" class="text-rose-600 hover:text-rose-900">Send Email</button>
+                </form>
+                {% endif %}
+                {% if customer.kyc_submitted %}
+                <a href="{{ url_for('kyc_submission_view', customer_id=customer.id) }}" class="text-gray-600 hover:text-gray-900">View</a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="bg-gradient-to-br from-rose-50 via-white to-blue-50 rounded-2xl p-12 text-center border border-gray-100 shadow-lg">
+    <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-rose-400 to-pink-500 rounded-2xl shadow-lg shadow-rose-200 mb-6">
+      <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+      </svg>
+    </div>
+    <h3 class="text-2xl font-bold text-gray-900 mb-3">No customers yet</h3>
+    <p class="text-gray-500 mb-6 max-w-md mx-auto">Add customers to start collecting KYC documents and indemnity signatures for your trips.</p>
+    <a href="{{ url_for('kyc_customer_new') }}" class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-semibold rounded-xl shadow-lg shadow-rose-200 transition-all hover:shadow-xl transform hover:-translate-y-0.5">
+      <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+      </svg>
+      Add First Customer
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

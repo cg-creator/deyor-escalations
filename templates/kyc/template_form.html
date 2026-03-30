@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Template - Deyor{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-3xl">
+  <div class="mb-6">
+    <a href="{{ url_for('kyc_templates') }}" class="text-gray-500 hover:text-gray-700 text-sm flex items-center mb-4">
+      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Back to Templates
+    </a>
+    <h1 class="text-2xl font-semibold text-gray-900">Upload Template</h1>
+    <p class="text-gray-600 mt-1">Upload T&C and Indemnity documents for customers</p>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <form action="{{ url_for('kyc_template_new') }}" method="POST" enctype="multipart/form-data" id="templateForm">
+      
+      <div class="mb-5">
+        <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Template Title *</label>
+        <input type="text" name="title" id="title" required
+               class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-3 py-2"
+               placeholder="e.g., Ladakh Trip 2024 - Terms & Indemnity">
+      </div>
+
+      <div class="mb-5">
+        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <input type="text" name="description" id="description"
+               class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-3 py-2"
+               placeholder="Brief description (optional)">
+      </div>
+
+      <!-- Terms & Conditions Upload -->
+      <div class="mb-5 p-4 bg-rose-50 rounded-lg border border-rose-200">
+        <h3 class="text-lg font-semibold text-rose-900 mb-3 flex items-center">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          Terms & Conditions Document *
+        </h3>
+        <p class="text-sm text-rose-700 mb-3">Upload T&C as PDF or Word. Customers must view and accept this before signing.</p>
+        <input type="file" name="terms_pdf" id="terms_pdf" accept=".pdf,.doc,.docx" required
+               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-white file:text-rose-700 hover:file:bg-rose-100 cursor-pointer border border-gray-300 rounded-lg px-3 py-2 bg-white">
+        <p class="text-xs text-gray-500 mt-1">Accepted: PDF, Word (.doc, .docx). Max 16MB.</p>
+      </div>
+
+      <!-- Indemnity Agreement Upload -->
+      <div class="mb-5 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <h3 class="text-lg font-semibold text-blue-900 mb-3 flex items-center">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+          Indemnity Agreement Document *
+        </h3>
+        <p class="text-sm text-blue-700 mb-3">Upload Indemnity PDF. Use placeholders: {{customer_name}}, {{booking_id}}, {{trip_date}}, {{email}}, {{phone}}</p>
+        <input type="file" name="indemnity_pdf" id="indemnity_pdf" accept=".pdf,.doc,.docx" required
+               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-white file:text-blue-700 hover:file:bg-blue-100 cursor-pointer border border-gray-300 rounded-lg px-3 py-2 bg-white">
+        <p class="text-xs text-gray-500 mt-1">Accepted: PDF, Word (.doc, .docx). Max 16MB.</p>
+      </div>
+
+      <div class="flex items-center mb-5">
+        <input type="checkbox" name="make_active" id="make_active" checked
+               class="h-4 w-4 text-rose-600 focus:ring-rose-500 border-gray-300 rounded">
+        <label for="make_active" class="ml-2 block text-sm text-gray-700">
+          Make this the active template
+        </label>
+      </div>
+
+      <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+        <a href="{{ url_for('kyc_templates') }}" class="text-gray-600 hover:text-gray-800 font-medium">
+          Cancel
+        </a>
+        <button type="submit" class="inline-flex items-center px-6 py-2 bg-rose-500 hover:bg-rose-600 text-white font-medium rounded-lg transition-colors">
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+          Upload Template
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.getElementById('templateForm').addEventListener('submit', function(e) {
+  var termsPdf = document.getElementById('terms_pdf').value;
+  var indemnityPdf = document.getElementById('indemnity_pdf').value;
+  
+  if (!termsPdf) {
+    e.preventDefault();
+    alert('Please upload Terms & Conditions document.');
+    return false;
+  }
+  if (!indemnityPdf) {
+    e.preventDefault();
+    alert('Please upload Indemnity Agreement document.');
+    return false;
+  }
+});
+</script>
+{% endblock %}

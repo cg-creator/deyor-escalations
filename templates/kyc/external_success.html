@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Thank You - Deyor{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+  <div class="container mx-auto px-4 max-w-2xl">
+    <!-- Notification Banner -->
+    <div class="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl shadow-lg shadow-emerald-200 p-5 mb-6 text-white">
+      <div class="flex items-center">
+        <div class="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+        </div>
+        <div class="ml-4">
+          <p class="text-lg font-bold">Notification Sent!</p>
+          <p class="text-emerald-100">The Deyor team has been notified of your submission.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl shadow-lg shadow-emerald-200 mb-6">
+        <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <h1 class="text-3xl font-bold text-gray-900 mb-3">Thank You!</h1>
+      <p class="text-gray-600 mb-6">{{ message }}</p>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <p class="text-sm text-blue-800">
+          <strong>What's Next?</strong><br>
+          Check your email for confirmation. If you haven't completed both KYC and Indemnity signing, please check your email for the remaining links.
+        </p>
+      </div>
+      <div class="mt-6 text-sm text-gray-500">
+        <p>Need help? Contact us at <a href="mailto:care@deyor.in" class="text-rose-500 hover:text-rose-600 font-medium">care@deyor.in</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
