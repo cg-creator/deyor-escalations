@@ -8,6 +8,8 @@ import re
 from email.mime.text import MIMEText
 import requests
 
+# KYC Module Enabled - Deployed March 2026
+
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
