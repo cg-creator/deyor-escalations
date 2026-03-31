@@ -1583,24 +1583,26 @@ def debug_db():
         
         # Check PostgreSQL sequence to see the true max ID ever assigned
         seq_val = None
-        try:
-            seq_val = conn.execute(text("SELECT last_value FROM tickets_id_seq")).scalar()
-        except Exception:
-            pass
-        
-        # Check all databases available
         all_dbs = []
-        try:
-            all_dbs = [r[0] for r in conn.execute(text("SELECT datname FROM pg_database WHERE datistemplate = false")).fetchall()]
-        except Exception:
-            pass
-        
-        # Check all tables in current database
         all_tables = []
-        try:
-            all_tables = [r[0] for r in conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).fetchall()]
-        except Exception:
-            pass
+        db_created = None
+        with db.engine.connect() as conn2:
+            try:
+                seq_val = conn2.execute(text("SELECT last_value FROM tickets_id_seq")).scalar()
+            except Exception as e:
+                seq_val = f"error: {e}"
+            try:
+                all_dbs = [r[0] for r in conn2.execute(text("SELECT datname FROM pg_database WHERE datistemplate = false")).fetchall()]
+            except Exception as e:
+                all_dbs = [f"error: {e}"]
+            try:
+                all_tables = [r[0] for r in conn2.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).fetchall()]
+            except Exception as e:
+                all_tables = [f"error: {e}"]
+            try:
+                db_created = str(conn2.execute(text("SELECT (pg_stat_file('base/'||oid||'/PG_VERSION')).modification FROM pg_database WHERE datname = current_database()")).scalar())
+            except Exception:
+                pass
         
         # KYC diagnostics
         kyc_count = 0
@@ -1615,6 +1617,7 @@ def debug_db():
 
         return {
             'database': dbname,
+            'db_created': db_created,
             'counts': counts,
             'ticket_ids': ticket_ids,
             'max_ticket_id': max_id,
