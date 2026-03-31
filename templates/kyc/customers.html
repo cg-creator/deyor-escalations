@@ -39,6 +39,19 @@
         </div>
       </div>
       <div class="flex-1 min-w-[180px]">
+        <label class="block text-xs font-medium text-gray-700 mb-1">Trip Name</label>
+        <div class="relative">
+          <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <input type="text" name="trip_name" value="{{ trip_name_query if trip_name_query else '' }}"
+                 placeholder="Search by trip name..."
+                 class="block w-full pl-8 pr-2 py-1.5 text-sm rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500">
+        </div>
+      </div>
+      <div class="flex-1 min-w-[180px]">
         <label class="block text-xs font-medium text-gray-700 mb-1">Booking ID</label>
         <div class="relative">
           <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
@@ -79,11 +92,13 @@
     </form>
   </div>
 
-  {% if search_query or booking_id_query %}
+  {% if search_query or booking_id_query or trip_name_query %}
   <div class="mb-3 text-sm text-gray-600">
     Showing results for 
     {% if search_query %}"<span class="font-medium text-gray-900">{{ search_query }}</span>"{% endif %}
-    {% if search_query and booking_id_query %} and {% endif %}
+    {% if search_query and (booking_id_query or trip_name_query) %} and {% endif %}
+    {% if trip_name_query %}trip "<span class="font-medium text-gray-900">{{ trip_name_query }}</span>"{% endif %}
+    {% if trip_name_query and booking_id_query %} and {% endif %}
     {% if booking_id_query %}booking "<span class="font-medium text-gray-900">{{ booking_id_query }}</span>"{% endif %}
     <span class="text-gray-500">({{ customers|length }} found)</span>
   </div>
@@ -120,6 +135,9 @@
             </td>
             <td class="px-3 py-2">
               <div class="flex flex-col gap-1">
+                {% if customer.trip_name %}
+                <div class="text-xs font-medium text-gray-900 truncate max-w-[160px]" title="{{ customer.trip_name }}">{{ customer.trip_name }}</div>
+                {% endif %}
                 <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ 'bg-blue-100 text-blue-700' if customer.trip_type == 'international' else 'bg-green-100 text-green-700' }} w-fit">
                   {{ customer.trip_type | title }}
                 </span>

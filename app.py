@@ -168,6 +168,7 @@ class KYCCustomer(db.Model):
     email = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
     trip_type = db.Column(db.String(20), nullable=False, default='domestic')  # 'domestic' or 'international'
+    trip_name = db.Column(db.String(200))  # Trip name for grouping participants
     trip_date = db.Column(db.Date)  # Trip start date for deadline tracking
     booking_id = db.Column(db.String(80))
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -377,12 +378,16 @@ def ensure_schema():
             except Exception:
                 pass
             
-            # Add trip_date column to kyc_customers table
+            # Add trip_date and trip_name columns to kyc_customers table
             kyc_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(kyc_customers)"))]
             if 'trip_date' not in kyc_cols:
                 conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN trip_date DATE"))
                 conn.commit()
                 print("[info] Added trip_date column to kyc_customers table")
+            if 'trip_name' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN trip_name VARCHAR(200)"))
+                conn.commit()
+                print("[info] Added trip_name column to kyc_customers table")
             
             # Add terms_pdf_path column to indemnity_templates table
             template_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(indemnity_templates)"))]
@@ -1790,18 +1795,22 @@ def kyc_customers():
     trip_type = request.args.get('trip_type', '')
     search_query = request.args.get('search', '').strip()
     booking_id_query = request.args.get('booking_id', '').strip()
+    trip_name_query = request.args.get('trip_name', '').strip()
     
     if current_user.role == 'admin':
         query = KYCCustomer.query
     else:
         query = KYCCustomer.query.filter_by(created_by_id=current_user.id)
     
-    # Apply search filter (name or booking_id)
+    # Apply search filters
     if search_query:
         query = query.filter(KYCCustomer.name.ilike(f'%{search_query}%'))
     
     if booking_id_query:
         query = query.filter(KYCCustomer.booking_id.ilike(f'%{booking_id_query}%'))
+    
+    if trip_name_query:
+        query = query.filter(KYCCustomer.trip_name.ilike(f'%{trip_name_query}%'))
     
     if status == 'kyc_pending':
         query = query.filter_by(kyc_submitted=False)
@@ -1821,7 +1830,8 @@ def kyc_customers():
     
     return render_template('kyc/customers.html', customers=customers, 
                          current_status=status, current_trip_type=trip_type,
-                         search_query=search_query, booking_id_query=booking_id_query)
+                         search_query=search_query, booking_id_query=booking_id_query,
+                         trip_name_query=trip_name_query)
 
 
 @app.route('/kyc/customers/new', methods=['GET', 'POST'])
@@ -1833,6 +1843,7 @@ def kyc_customer_new():
         email = request.form.get('email', '').strip()
         phone = request.form.get('phone', '').strip()
         trip_type = request.form.get('trip_type', 'domestic')
+        trip_name = request.form.get('trip_name', '').strip()
         trip_date_str = request.form.get('trip_date', '').strip()
         booking_id = request.form.get('booking_id', '').strip()
         
@@ -1854,6 +1865,7 @@ def kyc_customer_new():
             email=email,
             phone=phone,
             trip_type=trip_type,
+            trip_name=trip_name or None,
             trip_date=trip_date,
             booking_id=booking_id,
             created_by_id=current_user.id,
@@ -1906,6 +1918,7 @@ def kyc_customers_bulk():
                     email = row.get('email', '').strip()
                     phone = row.get('phone', '').strip()
                     trip_type = row.get('trip_type', 'domestic').strip()
+                    trip_name = row.get('trip_name', '').strip()
                     trip_date_str = row.get('trip_date', '').strip()
                     booking_id = row.get('booking_id', '').strip()
                     
@@ -1927,6 +1940,7 @@ def kyc_customers_bulk():
                         email=email,
                         phone=phone,
                         trip_type=trip_type if trip_type in ['domestic', 'international'] else 'domestic',
+                        trip_name=trip_name or None,
                         trip_date=trip_date,
                         booking_id=booking_id,
                         created_by_id=current_user.id,
@@ -2047,13 +2061,14 @@ def send_kyc_email(customer, template):
     trip_date_str = customer.trip_date.strftime('%d-%m-%Y') if customer.trip_date else 'Not specified'
     days_until = customer.get_days_until_trip()
     days_text = f"({days_until} days from now)" if days_until is not None and days_until >= 0 else ""
+    trip_name_text = f" - {customer.trip_name}" if customer.trip_name else ""
     
     subject = "Complete Your KYC and Sign Required Documents - Deyor"
     
     # Warm, personalized email with 7-day requirement
     body = f"""Dear {customer.name},
 
-Thank you for booking your {customer.trip_type.title()} trip with Deyor! We're excited to host you on an amazing adventure.
+Thank you for booking your {customer.trip_type.title()} trip{trip_name_text} with Deyor! We're excited to host you on an amazing adventure.
 
 📅 Trip Date: {trip_date_str} {days_text}
 

@@ -57,6 +57,12 @@
             {{ customer.trip_type | title }}
           </span>
         </div>
+        {% if customer.trip_name %}
+        <div>
+          <p class="text-sm text-gray-500">Trip Name</p>
+          <p class="font-medium text-gray-900">{{ customer.trip_name }}</p>
+        </div>
+        {% endif %}
         {% if customer.booking_id %}
         <div>
           <p class="text-sm text-gray-500">Booking ID</p>

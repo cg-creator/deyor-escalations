@@ -58,11 +58,20 @@
         </div>
       </div>
 
-      <div>
-        <label for="booking_id" class="block text-sm font-medium text-gray-700 mb-1">Booking ID</label>
-        <input type="text" name="booking_id" id="booking_id"
-               class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-               placeholder="Optional booking reference">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label for="trip_name" class="block text-sm font-medium text-gray-700 mb-1">Trip Name</label>
+          <input type="text" name="trip_name" id="trip_name"
+                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
+                 placeholder="e.g., Manali Adventure Dec 2024">
+          <p class="text-xs text-gray-500 mt-1">Used to group participants on the same trip</p>
+        </div>
+        <div>
+          <label for="booking_id" class="block text-sm font-medium text-gray-700 mb-1">Booking ID</label>
+          <input type="text" name="booking_id" id="booking_id"
+                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
+                 placeholder="Optional booking reference">
+        </div>
       </div>
 
       <div class="flex items-center justify-between pt-4 border-t border-gray-200">
