@@ -645,24 +645,33 @@ if (isMobile) {
   document.getElementById('departure_date').type = 'date';
   document.getElementById('departure_time').type = 'time';
 
-  // On form submit, convert native date (YYYY-MM-DD) to DD-MM-YYYY for backend
+  // On form submit, convert native formats for backend
+  // CRITICAL: must change type to 'text' BEFORE setting value,
+  // because browsers reject non-standard values for type=date/time
   document.getElementById('kycForm').addEventListener('submit', function() {
     ['arrival_date', 'departure_date'].forEach(function(id) {
       var el = document.getElementById(id);
-      if (el.value && el.value.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        var parts = el.value.split('-');
+      var val = el.value; // capture value while still type=date
+      if (val && val.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        var parts = val.split('-');
+        el.type = 'text'; // switch to text FIRST
         el.value = parts[2] + '-' + parts[1] + '-' + parts[0];
+      } else if (val) {
+        el.type = 'text'; // ensure it submits as-is
       }
     });
-    // Convert native time (HH:MM) to 12hr format for backend
     ['arrival_time', 'departure_time'].forEach(function(id) {
       var el = document.getElementById(id);
-      if (el.value && el.value.match(/^\d{2}:\d{2}$/)) {
-        var parts = el.value.split(':');
+      var val = el.value; // capture value while still type=time
+      if (val && val.match(/^\d{2}:\d{2}$/)) {
+        var parts = val.split(':');
         var h = parseInt(parts[0]), m = parts[1];
         var ampm = h >= 12 ? 'PM' : 'AM';
         h = h % 12 || 12;
+        el.type = 'text'; // switch to text FIRST
         el.value = h + ':' + m + ' ' + ampm;
+      } else if (val) {
+        el.type = 'text'; // ensure it submits as-is
       }
     });
   });

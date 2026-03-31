@@ -2658,6 +2658,35 @@ def kyc_external_form(token):
             'departure_time': request.form.get('departure_time', '').strip(),
         }
         
+        # Server-side normalization: handle native mobile date (YYYY-MM-DD) and time (HH:MM) formats
+        import re
+        for date_key in ('arrival_date', 'departure_date'):
+            val = form_data.get(date_key, '')
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', val):
+                parts = val.split('-')
+                form_data[date_key] = f"{parts[2]}-{parts[1]}-{parts[0]}"
+        for time_key in ('arrival_time', 'departure_time'):
+            val = form_data.get(time_key, '')
+            corresponding_date_key = time_key.replace('_time', '_date')
+            if re.match(r'^\d{2}:\d{2}$', val):
+                h, m = int(val.split(':')[0]), val.split(':')[1]
+                ampm = 'PM' if h >= 12 else 'AM'
+                h = h % 12 or 12
+                form_data[time_key] = f"{h}:{m} {ampm}"
+            # Also handle datetime-local (YYYY-MM-DDTHH:MM) as combined value
+            elif 'T' in val:
+                dt_parts = val.split('T')
+                if len(dt_parts) == 2:
+                    d_str, t_str = dt_parts
+                    dp = d_str.split('-')
+                    form_data[corresponding_date_key] = f"{dp[2]}-{dp[1]}-{dp[0]}" if len(dp) == 3 else d_str
+                    tp = t_str.split(':')
+                    if len(tp) >= 2:
+                        th, tm = int(tp[0]), tp[1]
+                        tampm = 'PM' if th >= 12 else 'AM'
+                        th = th % 12 or 12
+                        form_data[time_key] = f"{th}:{tm} {tampm}"
+        
         # Handle file uploads based on trip type
         document_paths = {}
         
