@@ -1581,6 +1581,27 @@ def debug_db():
         all_ids_set = set(range(1, max_id + 1)) if max_id else set()
         missing_ids = sorted(all_ids_set - set(ticket_ids))
         
+        # Check PostgreSQL sequence to see the true max ID ever assigned
+        seq_val = None
+        try:
+            seq_val = conn.execute(text("SELECT last_value FROM tickets_id_seq")).scalar()
+        except Exception:
+            pass
+        
+        # Check all databases available
+        all_dbs = []
+        try:
+            all_dbs = [r[0] for r in conn.execute(text("SELECT datname FROM pg_database WHERE datistemplate = false")).fetchall()]
+        except Exception:
+            pass
+        
+        # Check all tables in current database
+        all_tables = []
+        try:
+            all_tables = [r[0] for r in conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).fetchall()]
+        except Exception:
+            pass
+        
         # KYC diagnostics
         kyc_count = 0
         kyc_sub_count = 0
@@ -1598,6 +1619,9 @@ def debug_db():
             'ticket_ids': ticket_ids,
             'max_ticket_id': max_id,
             'missing_ticket_ids': missing_ids,
+            'sequence_last_value': seq_val,
+            'all_databases': all_dbs,
+            'all_tables': all_tables,
             'kyc_customers': kyc_count,
             'kyc_submissions': kyc_sub_count,
             'indemnity_requests': indemnity_count,
