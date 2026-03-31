@@ -1554,9 +1554,32 @@ def debug_db():
             except Exception:
                 counts[t] = 'missing'
 
+        # Ticket diagnostics
+        ticket_ids = [r[0] for r in db.session.execute(text('SELECT id FROM tickets ORDER BY id')).fetchall()]
+        max_id = max(ticket_ids) if ticket_ids else 0
+        all_ids_set = set(range(1, max_id + 1)) if max_id else set()
+        missing_ids = sorted(all_ids_set - set(ticket_ids))
+        
+        # KYC diagnostics
+        kyc_count = 0
+        kyc_sub_count = 0
+        indemnity_count = 0
+        try:
+            kyc_count = db.session.execute(text('SELECT COUNT(*) FROM kyc_customers')).scalar()
+            kyc_sub_count = db.session.execute(text('SELECT COUNT(*) FROM kyc_submissions')).scalar()
+            indemnity_count = db.session.execute(text('SELECT COUNT(*) FROM indemnity_requests')).scalar()
+        except:
+            pass
+
         return {
             'database': dbname,
             'counts': counts,
+            'ticket_ids': ticket_ids,
+            'max_ticket_id': max_id,
+            'missing_ticket_ids': missing_ids,
+            'kyc_customers': kyc_count,
+            'kyc_submissions': kyc_sub_count,
+            'indemnity_requests': indemnity_count,
         }
     except Exception as e:
         return {'error': str(e)}, 500
