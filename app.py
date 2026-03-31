@@ -174,6 +174,7 @@ class KYCCustomer(db.Model):
     trip_name = db.Column(db.String(200))  # Trip name for grouping participants
     trip_date = db.Column(db.Date)  # Trip start date for deadline tracking
     booking_id = db.Column(db.String(80))
+    requires_dl = db.Column(db.Boolean, default=True, nullable=False)  # Whether DL upload is required
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     
@@ -343,6 +344,7 @@ def ensure_schema():
                     # KYC table migrations
                     conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS trip_date DATE"))
                     conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS trip_name VARCHAR(200)"))
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS requires_dl BOOLEAN DEFAULT TRUE"))
                     conn.execute(text("ALTER TABLE indemnity_templates ADD COLUMN IF NOT EXISTS terms_pdf_path VARCHAR(255)"))
                     conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP"))
                     conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_location VARCHAR(100)"))
@@ -397,6 +399,10 @@ def ensure_schema():
                 conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN trip_name VARCHAR(200)"))
                 conn.commit()
                 print("[info] Added trip_name column to kyc_customers table")
+            if 'requires_dl' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN requires_dl BOOLEAN DEFAULT 1"))
+                conn.commit()
+                print("[info] Added requires_dl column to kyc_customers table")
             
             # Add terms_pdf_path column to indemnity_templates table
             template_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(indemnity_templates)"))]
@@ -2003,6 +2009,7 @@ def kyc_customer_new():
         trip_name = request.form.get('trip_name', '').strip()
         trip_date_str = request.form.get('trip_date', '').strip()
         booking_id = request.form.get('booking_id', '').strip()
+        requires_dl = request.form.get('requires_dl') == 'on'
         
         if not name or not email or not phone:
             flash('Name, email and phone are required.', 'danger')
@@ -2025,6 +2032,7 @@ def kyc_customer_new():
             trip_name=trip_name or None,
             trip_date=trip_date,
             booking_id=booking_id,
+            requires_dl=requires_dl,
             created_by_id=current_user.id,
             kyc_token=generate_token(),
             indemnity_token=generate_token()
@@ -2078,6 +2086,8 @@ def kyc_customers_bulk():
                     trip_name = row.get('trip_name', '').strip()
                     trip_date_str = row.get('trip_date', '').strip()
                     booking_id = row.get('booking_id', '').strip()
+                    requires_dl_str = row.get('requires_dl', 'yes').strip().lower()
+                    requires_dl = requires_dl_str not in ('no', 'false', '0', 'n')
                     
                     if not name or not email or not phone:
                         errors.append(f"Missing required fields for row: {row}")
@@ -2100,6 +2110,7 @@ def kyc_customers_bulk():
                         trip_name=trip_name or None,
                         trip_date=trip_date,
                         booking_id=booking_id,
+                        requires_dl=requires_dl,
                         created_by_id=current_user.id,
                         kyc_token=generate_token(),
                         indemnity_token=generate_token()
@@ -2187,6 +2198,55 @@ def kyc_customer_send(customer_id):
         flash(f'Failed to send email: {str(e)}', 'danger')
         print(f"[error] Failed to send KYC email: {e}")
     
+    return redirect(url_for('kyc_customers'))
+
+
+@app.route('/kyc/customers/<int:customer_id>/delete', methods=['POST'])
+@login_required
+def kyc_customer_delete(customer_id):
+    """Delete a single KYC customer (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only admins can delete customers.', 'danger')
+        return redirect(url_for('kyc_customers'))
+    
+    customer = KYCCustomer.query.get_or_404(customer_id)
+    name = customer.name
+    
+    # Delete related records
+    IndemnityRequest.query.filter_by(customer_id=customer.id).delete()
+    KYCSubmission.query.filter_by(customer_id=customer.id).delete()
+    db.session.delete(customer)
+    db.session.commit()
+    
+    flash(f'Customer "{name}" and all related data deleted.', 'success')
+    return redirect(url_for('kyc_customers'))
+
+
+@app.route('/kyc/customers/bulk-delete', methods=['POST'])
+@login_required
+def kyc_customers_bulk_delete():
+    """Bulk delete KYC customers (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only admins can delete customers.', 'danger')
+        return redirect(url_for('kyc_customers'))
+    
+    customer_ids = request.form.getlist('customer_ids')
+    if not customer_ids:
+        flash('No customers selected for deletion.', 'warning')
+        return redirect(url_for('kyc_customers'))
+    
+    ids = [int(cid) for cid in customer_ids if cid.isdigit()]
+    if not ids:
+        flash('Invalid customer selection.', 'danger')
+        return redirect(url_for('kyc_customers'))
+    
+    # Delete related records first
+    IndemnityRequest.query.filter(IndemnityRequest.customer_id.in_(ids)).delete(synchronize_session=False)
+    KYCSubmission.query.filter(KYCSubmission.customer_id.in_(ids)).delete(synchronize_session=False)
+    count = KYCCustomer.query.filter(KYCCustomer.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    
+    flash(f'{count} customer(s) and all related data deleted.', 'success')
     return redirect(url_for('kyc_customers'))
 
 
@@ -2474,12 +2534,14 @@ def kyc_external_form(token):
     
     if customer.kyc_submitted:
         return render_template('kyc/external_already_complete.html', 
-                             message='Your KYC form has already been submitted.')
+                             message='Your KYC form has already been submitted.',
+                             hide_nav=True)
     
     form = KYCForm.query.filter_by(is_active=True).first()
     if not form:
         return render_template('kyc/external_error.html', 
-                             message='KYC form is not available. Please contact support.')
+                             message='KYC form is not available. Please contact support.',
+                             hide_nav=True)
     
     import json
     fields = json.loads(form.fields_config) if form.fields_config else []
@@ -2597,7 +2659,8 @@ def kyc_external_form(token):
     return render_template('kyc/external_form.html', 
                          customer=customer, 
                          fields=fields, 
-                         is_international=customer.trip_type == 'international')
+                         is_international=customer.trip_type == 'international',
+                         hide_nav=True)
 
 
 @app.route('/kyc/sign/<token>', methods=['GET', 'POST'])
@@ -2607,12 +2670,14 @@ def kyc_external_indemnity(token):
     
     if customer.indemnity_signed:
         return render_template('kyc/external_already_complete.html',
-                             message='You have already signed the Terms & Conditions and Indemnity Agreement.')
+                             message='You have already signed the Terms & Conditions and Indemnity Agreement.',
+                             hide_nav=True)
     
     template = IndemnityTemplate.query.filter_by(is_active=True).first()
     if not template:
         return render_template('kyc/external_error.html',
-                             message='Required documents are not available. Please contact support.')
+                             message='Required documents are not available. Please contact support.',
+                             hide_nav=True)
     
     if request.method == 'POST':
         # Record signature
@@ -2714,7 +2779,8 @@ def kyc_external_indemnity(token):
             print(f"[warn] Failed to create indemnity signing notifications: {e}")
         
         return render_template('kyc/external_success.html',
-                             message='Thank you for signing the Terms & Conditions and Indemnity Agreement.')
+                             message='Thank you for signing the Terms & Conditions and Indemnity Agreement.',
+                             hide_nav=True)
     
     # For GET request, process indemnity PDF with placeholder replacement
     processed_pdf_path = None
@@ -2724,7 +2790,8 @@ def kyc_external_indemnity(token):
     return render_template('kyc/external_indemnity.html',
                          customer=customer,
                          template=template,
-                         processed_pdf_path=processed_pdf_path)
+                         processed_pdf_path=processed_pdf_path,
+                         hide_nav=True)
 
 
 def process_indemnity_pdf(pdf_path, customer):

@@ -25,7 +25,7 @@
         CSV Format
       </h3>
       <p class="text-sm text-blue-800 mb-2">Your CSV file must have these columns:</p>
-      <code class="text-xs bg-blue-100 px-2 py-1 rounded text-blue-900 block mb-2">name,email,phone,trip_type,trip_name,trip_date,booking_id</code>
+      <code class="text-xs bg-blue-100 px-2 py-1 rounded text-blue-900 block mb-2">name,email,phone,trip_type,trip_name,trip_date,booking_id,requires_dl</code>
       <ul class="text-xs text-blue-700 space-y-1 ml-4">
         <li>• <strong>name</strong> - Customer's full name (required)</li>
         <li>• <strong>email</strong> - Email address (required)</li>
@@ -34,6 +34,7 @@
         <li>• <strong>trip_name</strong> - Trip name to group participants (optional)</li>
         <li>• <strong>trip_date</strong> - Trip date in DD-MM-YYYY format (required)</li>
         <li>• <strong>booking_id</strong> - Optional booking reference</li>
+        <li>• <strong>requires_dl</strong> - "yes" or "no" (defaults to yes if omitted)</li>
       </ul>
       <p class="text-xs text-blue-600 mt-2 italic">trip_type defaults to "domestic" if not specified or invalid</p>
     </div>
@@ -77,10 +78,10 @@
 
 <script>
 function downloadSampleCSV() {
-  const csvContent = `name,email,phone,trip_type,trip_name,trip_date,booking_id
-John Doe,john@example.com,+91 98765 43210,domestic,Manali Adventure Dec 2024,25-12-2024,BKG001
-Jane Smith,jane@example.com,+91 98765 43211,international,Bali New Year 2025,30-12-2024,BKG002
-Bob Wilson,bob@example.com,+91 98765 43212,domestic,Manali Adventure Dec 2024,28-12-2024,BKG003`;
+  const csvContent = `name,email,phone,trip_type,trip_name,trip_date,booking_id,requires_dl
+John Doe,john@example.com,+91 98765 43210,domestic,Manali Adventure Dec 2024,25-12-2024,BKG001,yes
+Jane Smith,jane@example.com,+91 98765 43211,international,Bali New Year 2025,30-12-2024,BKG002,no
+Bob Wilson,bob@example.com,+91 98765 43212,domestic,Manali Adventure Dec 2024,28-12-2024,BKG003,yes`;
   
   const blob = new Blob([csvContent], { type: 'text/csv' });
   const url = window.URL.createObjectURL(blob);

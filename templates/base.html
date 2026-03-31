@@ -12,6 +12,15 @@
   </head>
   <body>
     <a href="#main-content" class="skip-link">Skip to content</a>
+    {% if hide_nav %}
+    <nav class="navbar navbar-light bg-white border-bottom shadow-sm">
+      <div class="container justify-content-center">
+        <span class="navbar-brand d-flex align-items-center mb-0">
+          <img src="{{ url_for('static', filename='css/img/Deyor Logo 2025.png') }}" alt="Deyor" height="32" class="me-2" onerror="this.style.display='none'">
+        </span>
+      </div>
+    </nav>
+    {% else %}
     <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
       <div class="container">
         {% set _host = (request.host or '').lower() %}
@@ -86,6 +95,7 @@
         </div>
       </div>
     </nav>
+    {% endif %}
 
     <main id="main-content" class="container my-4">
       {% with messages = get_flashed_messages(with_categories=true) %}
