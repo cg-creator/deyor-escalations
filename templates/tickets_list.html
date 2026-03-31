@@ -2,6 +2,13 @@
 {% block content %}
   <div class="d-flex align-items-center mb-3">
     <h4 class="me-auto mb-0">Tickets</h4>
+    {% if current_user.role == 'admin' %}
+      {% if show_deleted %}
+      <a href="{{ url_for('list_tickets') }}" class="btn btn-outline-primary btn-sm me-2">View Active</a>
+      {% else %}
+      <a href="{{ url_for('list_tickets', show_deleted='1') }}" class="btn btn-outline-secondary btn-sm me-2">View Archived</a>
+      {% endif %}
+    {% endif %}
     <a href="{{ url_for('new_ticket') }}" class="btn btn-primary">+ New</a>
   </div>
 
@@ -136,7 +143,7 @@
       </thead>
       <tbody>
         {% for t in tickets %}
-          <tr class="row-click" data-href="{{ url_for('ticket_detail', ticket_id=t.id) }}">
+          <tr class="row-click {% if t.deleted_at %}table-secondary{% endif %}" data-href="{{ url_for('ticket_detail', ticket_id=t.id) }}">
             <td>#{{ t.id }}</td>
             <td>
               <div class="fw-semibold">{{ t.subject }}</div>
@@ -147,7 +154,9 @@
               <span class="badge bg-{{ 'danger' if t.priority in ['High','Urgent'] else 'secondary' }}">{{ t.priority }}</span>
             </td>
             <td>
-              {% if t.status == 'Resolved' %}
+              {% if t.deleted_at %}
+                <span class="badge bg-dark">Archived</span>
+              {% elif t.status == 'Resolved' %}
                 <span class="badge bg-success">Resolved</span>
               {% elif t.status == 'In Progress' %}
                 <span class="badge bg-warning text-dark">In Progress</span>

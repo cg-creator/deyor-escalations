@@ -77,6 +77,8 @@ class Ticket(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     resolved_at = db.Column(db.DateTime)
     resolved_by = db.Column(db.String(120))
+    # Soft delete
+    deleted_at = db.Column(db.DateTime, nullable=True)
     # Relationships
     comments = db.relationship('Comment', backref='ticket', lazy=True, cascade='all, delete-orphan')
     assignees = db.relationship('User', secondary='ticket_assignees', backref='assigned_tickets')
@@ -175,6 +177,7 @@ class KYCCustomer(db.Model):
     trip_date = db.Column(db.Date)  # Trip start date for deadline tracking
     booking_id = db.Column(db.String(80))
     requires_dl = db.Column(db.Boolean, default=True, nullable=False)  # Whether DL upload is required
+    deleted_at = db.Column(db.DateTime, nullable=True)  # Soft delete
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     
@@ -345,6 +348,8 @@ def ensure_schema():
                     conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS trip_date DATE"))
                     conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS trip_name VARCHAR(200)"))
                     conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS requires_dl BOOLEAN DEFAULT TRUE"))
+                    conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP"))
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP"))
                     conn.execute(text("ALTER TABLE indemnity_templates ADD COLUMN IF NOT EXISTS terms_pdf_path VARCHAR(255)"))
                     conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP"))
                     conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_location VARCHAR(100)"))
@@ -403,6 +408,14 @@ def ensure_schema():
                 conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN requires_dl BOOLEAN DEFAULT 1"))
                 conn.commit()
                 print("[info] Added requires_dl column to kyc_customers table")
+            if 'deleted_at' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN deleted_at DATETIME"))
+                conn.commit()
+                print("[info] Added deleted_at column to kyc_customers table")
+            if 'deleted_at' not in cols:
+                conn.execute(text("ALTER TABLE tickets ADD COLUMN deleted_at DATETIME"))
+                conn.commit()
+                print("[info] Added deleted_at column to tickets table")
             
             # Add terms_pdf_path column to indemnity_templates table
             template_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(indemnity_templates)"))]
@@ -656,10 +669,14 @@ def list_tickets():
     end_date = request.args.get('end_date', '').strip()
 
     # Admin sees all, agents see only tickets assigned to them
+    # Always exclude soft-deleted tickets from normal listing
+    show_deleted = request.args.get('show_deleted', '') == '1' and getattr(current_user, 'role', None) == 'admin'
     if getattr(current_user, 'role', None) == 'admin':
         query = Ticket.query
     else:
         query = Ticket.query.join(ticket_assignees).filter(ticket_assignees.c.user_id == current_user.id)
+    if not show_deleted:
+        query = query.filter(Ticket.deleted_at.is_(None))
     if team:
         query = query.filter(Ticket.team == team)
     if status:
@@ -773,6 +790,7 @@ def list_tickets():
     return render_template(
         'tickets_list.html',
         tickets=tickets,
+        show_deleted=show_deleted,
         TEAMS=TEAMS,
         PRIORITIES=PRIORITIES,
         STATUSES=STATUSES,
@@ -989,20 +1007,23 @@ def delete_ticket(ticket_id: int):
     if not admin_required():
         return redirect(url_for('list_tickets'))
     t = Ticket.query.get_or_404(ticket_id)
-    # Clean up association rows to avoid orphans
-    try:
-        db.session.execute(text("DELETE FROM ticket_assignees WHERE ticket_id = :tid"), {"tid": t.id})
-    except Exception as e:
-        print(f"[warn] failed to clean ticket_assignees for ticket {t.id}: {e}")
-    # Clean up notifications referencing this ticket to avoid FK errors
-    try:
-        db.session.execute(text("DELETE FROM notifications WHERE ticket_id = :tid"), {"tid": t.id})
-    except Exception as e:
-        print(f"[warn] failed to delete notifications for ticket {t.id}: {e}")
-    db.session.delete(t)
+    # Soft delete - mark as deleted instead of removing
+    t.deleted_at = datetime.utcnow()
     db.session.commit()
-    flash('Ticket deleted.', 'success')
+    flash(f'Ticket #{t.id} archived. It can be restored by an admin.', 'success')
     return redirect(url_for('list_tickets'))
+
+
+@app.route('/tickets/<int:ticket_id>/restore', methods=['POST'])
+@login_required
+def restore_ticket(ticket_id: int):
+    if not admin_required():
+        return redirect(url_for('list_tickets'))
+    t = Ticket.query.get_or_404(ticket_id)
+    t.deleted_at = None
+    db.session.commit()
+    flash(f'Ticket #{t.id} restored.', 'success')
+    return redirect(url_for('ticket_detail', ticket_id=ticket_id))
 
 
 # ---- Ticket transfer (change lead assignee) ----
@@ -1915,6 +1936,9 @@ def kyc_customers():
     else:
         query = KYCCustomer.query.filter_by(created_by_id=current_user.id)
     
+    # Exclude soft-deleted customers
+    query = query.filter(KYCCustomer.deleted_at.is_(None))
+    
     # Apply search filters
     if search_query:
         query = query.filter(KYCCustomer.name.ilike(f'%{search_query}%'))
@@ -1969,6 +1993,9 @@ def kyc_customers_export():
         query = KYCCustomer.query
     else:
         query = KYCCustomer.query.filter_by(created_by_id=current_user.id)
+
+    # Exclude soft-deleted customers
+    query = query.filter(KYCCustomer.deleted_at.is_(None))
 
     if search_query:
         query = query.filter(KYCCustomer.name.ilike(f'%{search_query}%'))
@@ -2302,28 +2329,39 @@ def kyc_customer_send(customer_id):
 @app.route('/kyc/customers/<int:customer_id>/delete', methods=['POST'])
 @login_required
 def kyc_customer_delete(customer_id):
-    """Delete a single KYC customer (admin only)."""
+    """Soft-delete a single KYC customer (admin only)."""
     if current_user.role != 'admin':
         flash('Only admins can delete customers.', 'danger')
         return redirect(url_for('kyc_customers'))
     
     customer = KYCCustomer.query.get_or_404(customer_id)
-    name = customer.name
-    
-    # Delete related records
-    IndemnityRequest.query.filter_by(customer_id=customer.id).delete()
-    KYCSubmission.query.filter_by(customer_id=customer.id).delete()
-    db.session.delete(customer)
+    customer.deleted_at = datetime.utcnow()
     db.session.commit()
     
-    flash(f'Customer "{name}" and all related data deleted.', 'success')
+    flash(f'Customer "{customer.name}" archived. It can be restored by an admin.', 'success')
     return redirect(url_for('kyc_customers'))
+
+
+@app.route('/kyc/customers/<int:customer_id>/restore', methods=['POST'])
+@login_required
+def kyc_customer_restore(customer_id):
+    """Restore a soft-deleted KYC customer (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only admins can restore customers.', 'danger')
+        return redirect(url_for('kyc_customers'))
+    
+    customer = KYCCustomer.query.get_or_404(customer_id)
+    customer.deleted_at = None
+    db.session.commit()
+    
+    flash(f'Customer "{customer.name}" restored.', 'success')
+    return redirect(url_for('kyc_customer_detail', customer_id=customer_id))
 
 
 @app.route('/kyc/customers/bulk-delete', methods=['POST'])
 @login_required
 def kyc_customers_bulk_delete():
-    """Bulk delete KYC customers (admin only)."""
+    """Bulk soft-delete KYC customers (admin only)."""
     if current_user.role != 'admin':
         flash('Only admins can delete customers.', 'danger')
         return redirect(url_for('kyc_customers'))
@@ -2338,13 +2376,14 @@ def kyc_customers_bulk_delete():
         flash('Invalid customer selection.', 'danger')
         return redirect(url_for('kyc_customers'))
     
-    # Delete related records first
-    IndemnityRequest.query.filter(IndemnityRequest.customer_id.in_(ids)).delete(synchronize_session=False)
-    KYCSubmission.query.filter(KYCSubmission.customer_id.in_(ids)).delete(synchronize_session=False)
-    count = KYCCustomer.query.filter(KYCCustomer.id.in_(ids)).delete(synchronize_session=False)
+    # Soft delete - set deleted_at timestamp
+    now = datetime.utcnow()
+    count = KYCCustomer.query.filter(KYCCustomer.id.in_(ids), KYCCustomer.deleted_at.is_(None)).update(
+        {KYCCustomer.deleted_at: now}, synchronize_session=False
+    )
     db.session.commit()
     
-    flash(f'{count} customer(s) and all related data deleted.', 'success')
+    flash(f'{count} customer(s) archived. They can be restored by an admin.', 'success')
     return redirect(url_for('kyc_customers'))
 
 
