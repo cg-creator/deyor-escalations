@@ -2949,19 +2949,62 @@ def find_pdf_fields(pdf_path):
                 if any(kw in text for kw in ['signature', 'full', 'name', 'date', 'place', 'execution']):
                     print(f"[find_fields] Word {i}: '{word['text']}' x0={word['x0']:.1f} top={word['top']:.1f} bottom={word['bottom']:.1f}", file=sys.stderr)
             
-            # Look for "Signature:" label on the last page
+            # Look for "Signature" label and the underline next to it
             for i, word in enumerate(words):
                 text = word['text']
                 
-                # Find "Signature:" text position
-                if text.lower().startswith('signature'):
-                    # The signature line is right after "Signature:" - place signature above it
-                    sig_x = word['x1'] + 10  # Right of "Signature:" label
+                # Find "Signature" text position
+                if text.lower().replace(':', '').strip() == 'signature' or text.lower().startswith('signature'):
+                    sig_word = word
+                    sig_label_right = word['x1']
                     sig_y_plumber = word['top']
-                    # Convert to ReportLab Y (from bottom)
-                    sig_y = page_height - sig_y_plumber
+                    sig_bottom_plumber = word['bottom']
+                    
+                    # Look for underline characters (___) on the same line after "Signature"
+                    underline_x0 = sig_label_right + 5
+                    underline_x1 = sig_label_right + 180  # default width
+                    found_underline = False
+                    
+                    # Method 1: Look for underscore text characters
+                    for j in range(i + 1, min(i + 10, len(words))):
+                        next_word = words[j]
+                        # Check if on the same line (within 8pt vertical)
+                        if abs(next_word['top'] - sig_y_plumber) < 8:
+                            if '_' in next_word['text']:
+                                underline_x0 = next_word['x0']
+                                underline_x1 = next_word['x1']
+                                found_underline = True
+                                print(f"[find_fields] Found text underline after Signature: '{next_word['text']}' x0={underline_x0:.1f} x1={underline_x1:.1f}", file=sys.stderr)
+                                break
+                    
+                    # Method 2: Look for graphic lines near the Signature word
+                    if not found_underline:
+                        try:
+                            lines = last_page.lines or []
+                            rects = last_page.rects or []
+                            # Check horizontal lines near the signature Y position
+                            for line in lines:
+                                line_top = line.get('top', 0)
+                                line_x0 = line.get('x0', 0)
+                                line_x1 = line.get('x1', 0)
+                                # Horizontal line near signature, to the right of the word
+                                if abs(line_top - sig_y_plumber) < 12 and line_x0 >= sig_label_right - 5 and (line_x1 - line_x0) > 50:
+                                    underline_x0 = line_x0
+                                    underline_x1 = line_x1
+                                    found_underline = True
+                                    print(f"[find_fields] Found graphic line after Signature: x0={underline_x0:.1f} x1={underline_x1:.1f} top={line_top:.1f}", file=sys.stderr)
+                                    break
+                        except Exception as le:
+                            print(f"[find_fields] Line detection error: {le}", file=sys.stderr)
+                    
+                    # Place signature centered on the underline area, slightly above the baseline
+                    underline_width = underline_x1 - underline_x0
+                    sig_x = underline_x0
+                    # Convert to ReportLab Y (from bottom), offset upward so signature sits on the line
+                    sig_y = page_height - sig_bottom_plumber + 5
                     field_positions['signature'] = (sig_x, sig_y)
-                    print(f"[find_fields] Found signature at x={sig_x:.1f}, y={sig_y:.1f} (plumber_y={sig_y_plumber:.1f})", file=sys.stderr)
+                    field_positions['signature_width'] = max(underline_width, 150)
+                    print(f"[find_fields] Found signature at x={sig_x:.1f}, y={sig_y:.1f} width={underline_width:.1f} (plumber_y={sig_y_plumber:.1f})", file=sys.stderr)
             
             # Look for the EXECUTION section labels on the last page
             # These are typically in a table row with Full Name | Date | Place
@@ -3127,9 +3170,12 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
                             sig_x, sig_y = field_positions['signature']
                         else:
                             # Fallback: place signature in the "SIGNATURE OF PARTICIPANT" box area
-                            # Based on typical A4 PDF, the signature box is roughly in the lower third
                             sig_x = 200
-                            sig_y = 155  # Above the "Signature:" line
+                            sig_y = 155
+                        
+                        # Use detected underline width or default
+                        sig_draw_width = field_positions.get('signature_width', 150)
+                        sig_draw_height = int(sig_draw_width * 0.3)  # maintain aspect ratio
                         
                         if signature_image_path.startswith('typed:'):
                             sig_text = signature_image_path.replace('typed:', '')
@@ -3138,8 +3184,8 @@ def embed_signature_in_pdf(customer, signature_image_path, indemnity_request):
                             c.drawString(sig_x, sig_y, sig_text)
                         elif os.path.exists(full_sig_path):
                             img = ImageReader(full_sig_path)
-                            c.drawImage(img, sig_x, sig_y, width=180, height=45, mask='auto')
-                            print(f"[embed_sig] Drew signature image at ({sig_x}, {sig_y})", file=sys.stderr)
+                            c.drawImage(img, sig_x, sig_y, width=sig_draw_width, height=sig_draw_height, mask='auto')
+                            print(f"[embed_sig] Drew signature image at ({sig_x}, {sig_y}) size={sig_draw_width}x{sig_draw_height}", file=sys.stderr)
                         else:
                             print(f"[embed_sig] Signature file not found: {full_sig_path}", file=sys.stderr)
                     

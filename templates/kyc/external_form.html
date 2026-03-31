@@ -41,7 +41,7 @@
         </div>
       </div>
 
-      <form action="{{ url_for('kyc_external_form', token=customer.kyc_token) }}" method="POST" enctype="multipart/form-data" class="p-8 space-y-8">
+      <form id="kycForm" action="{{ url_for('kyc_external_form', token=customer.kyc_token) }}" method="POST" enctype="multipart/form-data" class="p-8 space-y-8">
         <!-- Trip Info Card -->
         <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
           <p class="text-sm text-blue-800">
@@ -255,7 +255,7 @@
               <div>
                 <label for="arrival_date" class="block text-sm font-medium text-gray-700 mb-1.5">Arrival Date <span class="text-red-500">*</span></label>
                 <div class="relative">
-                  <input type="text" name="arrival_date" id="arrival_date" required readonly
+                  <input type="text" name="arrival_date" id="arrival_date" required
                          placeholder="Select date"
                          class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -266,7 +266,7 @@
               <div>
                 <label for="arrival_time" class="block text-sm font-medium text-gray-700 mb-1.5">Arrival Time <span class="text-red-500">*</span></label>
                 <div class="relative">
-                  <input type="text" name="arrival_time" id="arrival_time" required readonly
+                  <input type="text" name="arrival_time" id="arrival_time" required
                          placeholder="Select time"
                          class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -299,7 +299,7 @@
               <div>
                 <label for="departure_date" class="block text-sm font-medium text-gray-700 mb-1.5">Departure Date <span class="text-red-500">*</span></label>
                 <div class="relative">
-                  <input type="text" name="departure_date" id="departure_date" required readonly
+                  <input type="text" name="departure_date" id="departure_date" required
                          placeholder="Select date"
                          class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -310,7 +310,7 @@
               <div>
                 <label for="departure_time" class="block text-sm font-medium text-gray-700 mb-1.5">Departure Time <span class="text-red-500">*</span></label>
                 <div class="relative">
-                  <input type="text" name="departure_time" id="departure_time" required readonly
+                  <input type="text" name="departure_time" id="departure_time" required
                          placeholder="Select time"
                          class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -635,61 +635,88 @@ document.querySelector('form').addEventListener('submit', function(e) {
   }
 });
 
-// Flatpickr date/time pickers - Airbnb style
-const isMobile = window.innerWidth < 640;
-const fpCommon = {
-  disableMobile: true,
-  animate: true,
-  allowInput: false,
-  appendTo: document.body,
-  static: isMobile,
-  position: isMobile ? 'above' : 'auto'
-};
+// Date/time pickers - native on mobile, Flatpickr on desktop
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
 
-// Date pickers
-flatpickr('#arrival_date', {
-  ...fpCommon,
-  dateFormat: 'd-m-Y',
-  altInput: true,
-  altFormat: isMobile ? 'M j, Y' : 'D, M j, Y',
-  minDate: 'today',
-  theme: 'airbnb',
-  onChange: function(dates, str, inst) {
-    if (dates[0]) {
-      depDatePicker.set('minDate', dates[0]);
+if (isMobile) {
+  // Use native date/time pickers on mobile - best UX
+  document.getElementById('arrival_date').type = 'date';
+  document.getElementById('arrival_time').type = 'time';
+  document.getElementById('departure_date').type = 'date';
+  document.getElementById('departure_time').type = 'time';
+
+  // On form submit, convert native date (YYYY-MM-DD) to DD-MM-YYYY for backend
+  document.getElementById('kycForm').addEventListener('submit', function() {
+    ['arrival_date', 'departure_date'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el.value && el.value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        var parts = el.value.split('-');
+        el.value = parts[2] + '-' + parts[1] + '-' + parts[0];
+      }
+    });
+    // Convert native time (HH:MM) to 12hr format for backend
+    ['arrival_time', 'departure_time'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el.value && el.value.match(/^\d{2}:\d{2}$/)) {
+        var parts = el.value.split(':');
+        var h = parseInt(parts[0]), m = parts[1];
+        var ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        el.value = h + ':' + m + ' ' + ampm;
+      }
+    });
+  });
+} else {
+  // Desktop: use Flatpickr
+  const fpCommon = {
+    disableMobile: true,
+    animate: true,
+    allowInput: false
+  };
+
+  flatpickr('#arrival_date', {
+    ...fpCommon,
+    dateFormat: 'd-m-Y',
+    altInput: true,
+    altFormat: 'D, M j, Y',
+    minDate: 'today',
+    theme: 'airbnb',
+    onChange: function(dates, str, inst) {
+      if (dates[0]) {
+        depDatePicker.set('minDate', dates[0]);
+      }
     }
-  }
-});
+  });
 
-const depDatePicker = flatpickr('#departure_date', {
-  ...fpCommon,
-  dateFormat: 'd-m-Y',
-  altInput: true,
-  altFormat: isMobile ? 'M j, Y' : 'D, M j, Y',
-  minDate: 'today',
-  theme: 'airbnb'
-});
+  var depDatePicker = flatpickr('#departure_date', {
+    ...fpCommon,
+    dateFormat: 'd-m-Y',
+    altInput: true,
+    altFormat: 'D, M j, Y',
+    minDate: 'today',
+    theme: 'airbnb'
+  });
 
-// Time pickers
-flatpickr('#arrival_time', {
-  ...fpCommon,
-  enableTime: true,
-  noCalendar: true,
-  dateFormat: 'h:i K',
-  time_24hr: false,
-  minuteIncrement: 15,
-  theme: 'airbnb'
-});
+  flatpickr('#arrival_time', {
+    ...fpCommon,
+    enableTime: true,
+    noCalendar: true,
+    dateFormat: 'h:i K',
+    time_24hr: false,
+    minuteIncrement: 15,
+    theme: 'airbnb'
+  });
 
-flatpickr('#departure_time', {
-  ...fpCommon,
-  enableTime: true,
-  noCalendar: true,
-  dateFormat: 'h:i K',
-  time_24hr: false,
-  minuteIncrement: 15,
-  theme: 'airbnb'
-});
+  flatpickr('#departure_time', {
+    ...fpCommon,
+    enableTime: true,
+    noCalendar: true,
+    dateFormat: 'h:i K',
+    time_24hr: false,
+    minuteIncrement: 15,
+    theme: 'airbnb'
+  });
+}
 
 // Custom Flatpickr styling to match Airbnb aesthetic
 const fpStyle = document.createElement('style');
@@ -765,47 +792,12 @@ fpStyle.textContent = `
     border-color: #E11D48 !important;
     box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.1) !important;
   }
-  /* Mobile responsive fixes */
-  @media (max-width: 640px) {
-    .flatpickr-calendar {
-      width: calc(100vw - 32px) !important;
-      max-width: 320px !important;
-      left: 50% !important;
-      transform: translateX(-50%) !important;
-      border-radius: 12px !important;
-      padding: 4px !important;
-    }
-    .flatpickr-calendar.static {
-      position: fixed !important;
-      top: auto !important;
-      bottom: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      transform: none !important;
-      width: 100vw !important;
-      max-width: 100vw !important;
-      border-radius: 20px 20px 0 0 !important;
-      padding: 16px !important;
-      box-shadow: 0 -10px 40px rgba(0,0,0,0.2) !important;
-      z-index: 99999 !important;
-    }
-    .flatpickr-day {
-      height: 36px !important;
-      line-height: 36px !important;
-      margin: 1px !important;
-    }
-    .flatpickr-time input {
-      font-size: 16px !important;
-    }
-  }
-  /* Prevent body scroll when flatpickr open on mobile */
-  body.flatpickr-open {
-    overflow: hidden;
-  }
-  /* Ensure alt input inherits styles */
-  .flatpickr-input.active + .form-control,
-  input.flatpickr-mobile {
+  /* Native mobile date/time input styling */
+  input[type="date"].dt-picker,
+  input[type="time"].dt-picker {
+    min-height: 44px;
     font-size: 16px !important;
+    -webkit-appearance: none;
   }
 `;
 document.head.appendChild(fpStyle);

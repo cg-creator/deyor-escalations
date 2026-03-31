@@ -110,14 +110,13 @@
   </div>
   {% endif %}
   {% if customers %}
-  <form id="bulkDeleteForm" action="{{ url_for('kyc_customers_bulk_delete') }}" method="POST">
   {% if current_user.role == 'admin' %}
   <div class="flex items-center gap-3 mb-3">
     <button type="button" id="selectAllBtn" onclick="toggleSelectAll()" class="inline-flex items-center px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-medium rounded-lg transition-colors">
       <input type="checkbox" id="selectAllCheckbox" class="w-4 h-4 mr-2 text-rose-600 border-gray-300 rounded focus:ring-rose-500 cursor-pointer" onchange="toggleSelectAll()">
       Select All
     </button>
-    <button type="submit" id="bulkDeleteBtn" class="hidden inline-flex items-center px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors" onclick="return confirm('Are you sure you want to delete the selected customers? This cannot be undone.')">
+    <button type="button" id="bulkDeleteBtn" class="hidden inline-flex items-center px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors" onclick="bulkDelete()">
       <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
       </svg>
@@ -225,14 +224,12 @@
                   View Details
                 </a>
                 {% if not customer.kyc_submitted or not customer.indemnity_signed %}
-                <form action="{{ url_for('kyc_customer_send', customer_id=customer.id) }}" method="POST" class="inline">
-                  <button type="submit" class="w-full inline-flex items-center justify-center px-2.5 py-1 bg-rose-500 hover:bg-rose-600 text-white text-xs font-medium rounded-lg transition-colors">
+                <button type="button" onclick="sendEmail({{ customer.id }})" class="w-full inline-flex items-center justify-center px-2.5 py-1 bg-rose-500 hover:bg-rose-600 text-white text-xs font-medium rounded-lg transition-colors">
                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                     </svg>
                     Send Email
-                  </button>
-                </form>
+                </button>
                 {% endif %}
                 {% if current_user.role == 'admin' %}
                 <button type="button" onclick="deleteSingle({{ customer.id }}, '{{ customer.name | e }}')" class="w-full inline-flex items-center justify-center px-2.5 py-1 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors">
@@ -250,7 +247,6 @@
       </table>
     </div>
   </div>
-  </form>
   {% else %}
   <div class="bg-gray-50 rounded-lg p-8 text-center">
     <svg class="w-10 h-10 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,6 +264,14 @@ function exportToExcel() {
   window.location.href = '{{ url_for("kyc_customers_export") }}?' + params.toString();
 }
 
+function sendEmail(customerId) {
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/kyc/customers/' + customerId + '/send';
+  document.body.appendChild(form);
+  form.submit();
+}
+
 function deleteSingle(customerId, customerName) {
   if (confirm('Delete customer "' + customerName + '" and all their data? This cannot be undone.')) {
     var form = document.createElement('form');
@@ -276,6 +280,24 @@ function deleteSingle(customerId, customerName) {
     document.body.appendChild(form);
     form.submit();
   }
+}
+
+function bulkDelete() {
+  var checked = document.querySelectorAll('.customer-checkbox:checked');
+  if (checked.length === 0) return;
+  if (!confirm('Are you sure you want to delete ' + checked.length + ' customer(s)? This cannot be undone.')) return;
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '{{ url_for("kyc_customers_bulk_delete") }}';
+  checked.forEach(function(cb) {
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'customer_ids';
+    input.value = cb.value;
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
 }
 
 function toggleSelectAll() {
