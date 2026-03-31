@@ -425,9 +425,84 @@ def ensure_schema():
         print(f"[warn] ensure_schema failed: {e}")
 
 
+def migrate_arrival_departure_fields():
+    """One-time migration: split old combined arrival_time/departure_time 
+    (datetime-local format like '2025-04-15T10:00') into separate 
+    arrival_date + arrival_time and departure_date + departure_time keys."""
+    import json
+    try:
+        submissions = KYCSubmission.query.all()
+        migrated = 0
+        for sub in submissions:
+            if not sub.form_data:
+                continue
+            try:
+                data = json.loads(sub.form_data)
+            except:
+                continue
+            changed = False
+            
+            # Check if arrival_time has a combined datetime-local value (contains 'T')
+            arr_time = data.get('arrival_time', '')
+            if arr_time and 'T' in arr_time and not data.get('arrival_date'):
+                # Split '2025-04-15T10:00' into date + time
+                parts = arr_time.split('T')
+                if len(parts) == 2:
+                    date_str = parts[0]  # '2025-04-15'
+                    time_str = parts[1]  # '10:00'
+                    # Convert date from YYYY-MM-DD to DD-MM-YYYY
+                    try:
+                        dp = date_str.split('-')
+                        data['arrival_date'] = f"{dp[2]}-{dp[1]}-{dp[0]}"
+                    except:
+                        data['arrival_date'] = date_str
+                    # Convert time from 24hr to 12hr
+                    try:
+                        tp = time_str.split(':')
+                        h, m = int(tp[0]), tp[1]
+                        ampm = 'PM' if h >= 12 else 'AM'
+                        h = h % 12 or 12
+                        data['arrival_time'] = f"{h}:{m} {ampm}"
+                    except:
+                        data['arrival_time'] = time_str
+                    changed = True
+            
+            dep_time = data.get('departure_time', '')
+            if dep_time and 'T' in dep_time and not data.get('departure_date'):
+                parts = dep_time.split('T')
+                if len(parts) == 2:
+                    date_str = parts[0]
+                    time_str = parts[1]
+                    try:
+                        dp = date_str.split('-')
+                        data['departure_date'] = f"{dp[2]}-{dp[1]}-{dp[0]}"
+                    except:
+                        data['departure_date'] = date_str
+                    try:
+                        tp = time_str.split(':')
+                        h, m = int(tp[0]), tp[1]
+                        ampm = 'PM' if h >= 12 else 'AM'
+                        h = h % 12 or 12
+                        data['departure_time'] = f"{h}:{m} {ampm}"
+                    except:
+                        data['departure_time'] = time_str
+                    changed = True
+            
+            if changed:
+                sub.form_data = json.dumps(data)
+                migrated += 1
+        
+        if migrated:
+            db.session.commit()
+            print(f"[info] Migrated {migrated} submission(s): split arrival/departure datetime fields")
+    except Exception as e:
+        print(f"[warn] arrival/departure migration failed: {e}")
+
+
 with app.app_context():
     db.create_all()
     ensure_schema()
+    migrate_arrival_departure_fields()
     # One-time IST migration (optional, guarded by env var and meta flag)
     try:
         do_ist = (os.getenv('APPLY_IST_MIGRATION') or '').strip().lower() in {'1','true','yes','on'}
