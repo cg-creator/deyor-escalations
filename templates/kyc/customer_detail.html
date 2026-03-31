@@ -113,14 +113,6 @@
           </div>
           {% endfor %}
         </div>
-        <div class="px-6 py-4 bg-gray-50 border-t border-gray-100">
-          <button onclick="downloadKYCData()" class="inline-flex items-center text-sm text-rose-600 hover:text-rose-700 font-medium">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m0 0l-4 4m4-4v12"/>
-            </svg>
-            Download KYC Data (JSON)
-          </button>
-        </div>
       </div>
       {% endif %}
 
@@ -344,32 +336,7 @@
 </div>
 
 <script>
-// Safely parse template data
-const kycFormData = JSON.parse('{{ form_data | tojson | safe }}');
 const kycDocumentPaths = JSON.parse('{{ document_paths | tojson | safe }}');
-const customerName = '{{ customer.name | replace(" ", "_") }}';
-const customerInfo = {
-  name: '{{ customer.name }}',
-  email: '{{ customer.email }}',
-  phone: '{{ customer.phone }}',
-  trip_type: '{{ customer.trip_type }}',
-  trip_name: '{{ customer.trip_name or "" }}',
-  trip_date: '{{ customer.trip_date.strftime("%d-%m-%Y") if customer.trip_date else "" }}',
-  booking_id: '{{ customer.booking_id or "" }}'
-};
-
-function downloadKYCData() {
-  const fullData = { customer: customerInfo, kyc_form: kycFormData };
-  const blob = new Blob([JSON.stringify(fullData, null, 2)], { type: 'application/json' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = customerName + '_KYC_Data.json';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
-}
 
 function downloadAllDocuments() {
   let delay = 0;

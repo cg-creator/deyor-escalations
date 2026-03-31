@@ -1,16 +1,19 @@
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from io import BytesIO
 import smtplib
 import ssl
 import certifi
 import re
 from email.mime.text import MIMEText
 import requests
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # KYC Module Enabled - Deployed March 2026
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from sqlalchemy import or_, text, func
@@ -337,6 +340,12 @@ def ensure_schema():
                             value VARCHAR(200)
                         )
                     """))
+                    # KYC table migrations
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS trip_date DATE"))
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS trip_name VARCHAR(200)"))
+                    conn.execute(text("ALTER TABLE indemnity_templates ADD COLUMN IF NOT EXISTS terms_pdf_path VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP"))
+                    conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_location VARCHAR(100)"))
                     # Helpful indexes
                     conn.execute(text("""
                         CREATE INDEX IF NOT EXISTS idx_notifications_user_created
@@ -1807,7 +1816,14 @@ def kyc_customers():
         query = query.filter(KYCCustomer.name.ilike(f'%{search_query}%'))
     
     if booking_id_query:
-        query = query.filter(KYCCustomer.booking_id.ilike(f'%{booking_id_query}%'))
+        # Support multiple booking IDs separated by comma, newline, or space
+        raw_ids = re.split(r'[,\n\r\s]+', booking_id_query)
+        booking_ids = [bid.strip() for bid in raw_ids if bid.strip()]
+        if len(booking_ids) == 1:
+            query = query.filter(KYCCustomer.booking_id.ilike(f'%{booking_ids[0]}%'))
+        elif len(booking_ids) > 1:
+            bid_filters = [KYCCustomer.booking_id.ilike(f'%{bid}%') for bid in booking_ids]
+            query = query.filter(or_(*bid_filters))
     
     if trip_name_query:
         query = query.filter(KYCCustomer.trip_name.ilike(f'%{trip_name_query}%'))
@@ -1832,6 +1848,147 @@ def kyc_customers():
                          current_status=status, current_trip_type=trip_type,
                          search_query=search_query, booking_id_query=booking_id_query,
                          trip_name_query=trip_name_query)
+
+
+@app.route('/kyc/customers/export')
+@login_required
+def kyc_customers_export():
+    """Export customers to Excel with current filters applied."""
+    import json as _json
+    status = request.args.get('status', '')
+    trip_type = request.args.get('trip_type', '')
+    search_query = request.args.get('search', '').strip()
+    booking_id_query = request.args.get('booking_id', '').strip()
+    trip_name_query = request.args.get('trip_name', '').strip()
+
+    if current_user.role == 'admin':
+        query = KYCCustomer.query
+    else:
+        query = KYCCustomer.query.filter_by(created_by_id=current_user.id)
+
+    if search_query:
+        query = query.filter(KYCCustomer.name.ilike(f'%{search_query}%'))
+    if booking_id_query:
+        raw_ids = re.split(r'[,\n\r\s]+', booking_id_query)
+        booking_ids = [bid.strip() for bid in raw_ids if bid.strip()]
+        if len(booking_ids) == 1:
+            query = query.filter(KYCCustomer.booking_id.ilike(f'%{booking_ids[0]}%'))
+        elif len(booking_ids) > 1:
+            bid_filters = [KYCCustomer.booking_id.ilike(f'%{bid}%') for bid in booking_ids]
+            query = query.filter(or_(*bid_filters))
+    if trip_name_query:
+        query = query.filter(KYCCustomer.trip_name.ilike(f'%{trip_name_query}%'))
+    if status == 'kyc_pending':
+        query = query.filter_by(kyc_submitted=False)
+    elif status == 'kyc_completed':
+        query = query.filter_by(kyc_submitted=True)
+    elif status == 'indemnity_pending':
+        query = query.filter_by(indemnity_signed=False)
+    elif status == 'indemnity_signed':
+        query = query.filter_by(indemnity_signed=True)
+    elif status == 'fully_complete':
+        query = query.filter_by(kyc_submitted=True, indemnity_signed=True)
+    if trip_type in ['domestic', 'international']:
+        query = query.filter_by(trip_type=trip_type)
+
+    customers = query.order_by(KYCCustomer.created_at.desc()).all()
+
+    # Build Excel workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "KYC Customers"
+
+    # Styles
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="E11D48", end_color="E11D48", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style='thin', color='D1D5DB'),
+        right=Side(style='thin', color='D1D5DB'),
+        top=Side(style='thin', color='D1D5DB'),
+        bottom=Side(style='thin', color='D1D5DB')
+    )
+
+    headers = [
+        "Name", "Email", "Phone", "Trip Name", "Trip Type", "Trip Date",
+        "Booking ID", "KYC Status", "KYC Submitted At",
+        "Indemnity Status", "Indemnity Signed At", "Created At"
+    ]
+    # Also include KYC form data columns dynamically
+    # Gather all unique form data keys
+    all_form_keys = set()
+    customer_form_data = {}
+    for c in customers:
+        if c.submission and c.submission.form_data:
+            try:
+                fd = _json.loads(c.submission.form_data)
+                customer_form_data[c.id] = fd
+                all_form_keys.update(fd.keys())
+            except Exception:
+                customer_form_data[c.id] = {}
+        else:
+            customer_form_data[c.id] = {}
+    form_keys_sorted = sorted(all_form_keys)
+    headers.extend([k.replace('_', ' ').title() for k in form_keys_sorted])
+
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+
+    ist = ZoneInfo('Asia/Kolkata')
+    for row_idx, c in enumerate(customers, 2):
+        fd = customer_form_data.get(c.id, {})
+        row_data = [
+            c.name,
+            c.email,
+            c.phone,
+            c.trip_name or '',
+            c.trip_type.title() if c.trip_type else '',
+            c.trip_date.strftime('%d-%m-%Y') if c.trip_date else '',
+            c.booking_id or '',
+            'Completed' if c.kyc_submitted else 'Pending',
+            c.kyc_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.kyc_submitted_at else '',
+            'Signed' if c.indemnity_signed else 'Pending',
+            c.indemnity_signed_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.indemnity_signed_at else '',
+            c.created_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.created_at else '',
+        ]
+        row_data.extend([fd.get(k, '') for k in form_keys_sorted])
+
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+
+    # Auto-fit column widths
+    for col_idx in range(1, len(headers) + 1):
+        max_len = len(str(ws.cell(row=1, column=col_idx).value or ''))
+        for row_idx in range(2, len(customers) + 2):
+            val = str(ws.cell(row=row_idx, column=col_idx).value or '')
+            if len(val) > max_len:
+                max_len = len(val)
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = min(max_len + 4, 40)
+
+    # Freeze header row
+    ws.freeze_panes = 'A2'
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    # Filename
+    parts = ['KYC_Customers']
+    if trip_name_query:
+        parts.append(trip_name_query.replace(' ', '_'))
+    if booking_id_query:
+        parts.append('BID_' + booking_id_query.replace(' ', '_').replace(',', '_')[:30])
+    parts.append(datetime.now(ist).strftime('%d%m%Y'))
+    filename = '_'.join(parts) + '.xlsx'
+
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=filename)
 
 
 @app.route('/kyc/customers/new', methods=['GET', 'POST'])
@@ -2357,8 +2514,10 @@ def kyc_external_form(token):
             'emergency_relation': request.form.get('emergency_relation', '').strip(),
             'hear_about': request.form.get('hear_about', '').strip(),
             'arrival_mode': request.form.get('arrival_mode', '').strip(),
+            'arrival_date': request.form.get('arrival_date', '').strip(),
             'arrival_time': request.form.get('arrival_time', '').strip(),
             'departure_mode': request.form.get('departure_mode', '').strip(),
+            'departure_date': request.form.get('departure_date', '').strip(),
             'departure_time': request.form.get('departure_time', '').strip(),
         }
         

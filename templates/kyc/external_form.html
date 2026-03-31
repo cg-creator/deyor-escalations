@@ -2,6 +2,12 @@
 
 {% block title %}Complete Your KYC - Deyor{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/airbnb.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+{% endblock %}
+
 {% block content %}
 <div class="min-h-screen bg-gray-50 py-8">
   <div class="container mx-auto px-4 max-w-2xl">
@@ -233,7 +239,7 @@
               <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold mr-2">1</span>
               Arrival Details
             </h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
                 <label for="arrival_mode" class="block text-sm font-medium text-gray-700 mb-1.5">Mode of Arrival <span class="text-red-500">*</span></label>
                 <select name="arrival_mode" id="arrival_mode" required
@@ -247,9 +253,26 @@
                 </select>
               </div>
               <div>
+                <label for="arrival_date" class="block text-sm font-medium text-gray-700 mb-1.5">Arrival Date <span class="text-red-500">*</span></label>
+                <div class="relative">
+                  <input type="text" name="arrival_date" id="arrival_date" required readonly
+                         placeholder="Select date"
+                         class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
+                  <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div>
                 <label for="arrival_time" class="block text-sm font-medium text-gray-700 mb-1.5">Arrival Time <span class="text-red-500">*</span></label>
-                <input type="datetime-local" name="arrival_time" id="arrival_time" required
-                       class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-3 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base appearance-none">
+                <div class="relative">
+                  <input type="text" name="arrival_time" id="arrival_time" required readonly
+                         placeholder="Select time"
+                         class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
+                  <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -260,7 +283,7 @@
               <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500 text-white text-xs font-bold mr-2">2</span>
               Departure Details
             </h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
                 <label for="departure_mode" class="block text-sm font-medium text-gray-700 mb-1.5">Mode of Departure <span class="text-red-500">*</span></label>
                 <select name="departure_mode" id="departure_mode" required
@@ -274,9 +297,26 @@
                 </select>
               </div>
               <div>
+                <label for="departure_date" class="block text-sm font-medium text-gray-700 mb-1.5">Departure Date <span class="text-red-500">*</span></label>
+                <div class="relative">
+                  <input type="text" name="departure_date" id="departure_date" required readonly
+                         placeholder="Select date"
+                         class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
+                  <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div>
                 <label for="departure_time" class="block text-sm font-medium text-gray-700 mb-1.5">Departure Time <span class="text-red-500">*</span></label>
-                <input type="datetime-local" name="departure_time" id="departure_time" required
-                       class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-3 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base appearance-none">
+                <div class="relative">
+                  <input type="text" name="departure_time" id="departure_time" required readonly
+                         placeholder="Select time"
+                         class="dt-picker block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 pl-10 pr-4 py-2.5 transition-all hover:border-gray-400 bg-white text-sm md:text-base cursor-pointer">
+                  <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -593,45 +633,135 @@ document.querySelector('form').addEventListener('submit', function(e) {
   }
 });
 
-// Custom styles for datetime-local inputs to ensure consistent theming
-const style = document.createElement('style');
-style.textContent = `
-  input[type="datetime-local"] {
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    background-color: white;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 1.25rem;
-    padding-right: 2.5rem;
-    min-height: 44px;
-  }
-  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-    position: absolute;
-    right: 0.75rem;
-    opacity: 0;
-    width: 1.5rem;
-    height: 1.5rem;
-    cursor: pointer;
-  }
-  input[type="datetime-local"]::-webkit-datetime-edit {
-    color: #374151;
-  }
-  input[type="datetime-local"]:focus {
-    border-color: #F43F5E;
-    box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.1);
-  }
-  @media (max-width: 640px) {
-    input[type="datetime-local"] {
-      font-size: 16px;
-      padding-left: 0.75rem;
-      padding-right: 2.25rem;
+// Flatpickr date/time pickers - Airbnb style
+const fpCommon = {
+  disableMobile: true,
+  animate: true,
+  allowInput: false
+};
+
+// Date pickers
+flatpickr('#arrival_date', {
+  ...fpCommon,
+  dateFormat: 'd-m-Y',
+  altInput: true,
+  altFormat: 'D, M j, Y',
+  minDate: 'today',
+  theme: 'airbnb',
+  onChange: function(dates, str, inst) {
+    // Set departure min date to arrival date
+    if (dates[0]) {
+      depDatePicker.set('minDate', dates[0]);
     }
   }
+});
+
+const depDatePicker = flatpickr('#departure_date', {
+  ...fpCommon,
+  dateFormat: 'd-m-Y',
+  altInput: true,
+  altFormat: 'D, M j, Y',
+  minDate: 'today',
+  theme: 'airbnb'
+});
+
+// Time pickers
+flatpickr('#arrival_time', {
+  ...fpCommon,
+  enableTime: true,
+  noCalendar: true,
+  dateFormat: 'h:i K',
+  time_24hr: false,
+  minuteIncrement: 15,
+  theme: 'airbnb'
+});
+
+flatpickr('#departure_time', {
+  ...fpCommon,
+  enableTime: true,
+  noCalendar: true,
+  dateFormat: 'h:i K',
+  time_24hr: false,
+  minuteIncrement: 15,
+  theme: 'airbnb'
+});
+
+// Custom Flatpickr styling to match Airbnb aesthetic
+const fpStyle = document.createElement('style');
+fpStyle.textContent = `
+  .flatpickr-calendar {
+    border-radius: 16px !important;
+    box-shadow: 0 20px 60px -10px rgba(0,0,0,0.15), 0 8px 20px -6px rgba(0,0,0,0.1) !important;
+    border: 1px solid #e5e7eb !important;
+    font-family: inherit !important;
+    padding: 8px !important;
+  }
+  .flatpickr-months {
+    padding: 8px 0 !important;
+  }
+  .flatpickr-months .flatpickr-month {
+    height: 36px !important;
+  }
+  .flatpickr-current-month {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+  }
+  .flatpickr-day {
+    border-radius: 50% !important;
+    font-weight: 500 !important;
+    height: 38px !important;
+    line-height: 38px !important;
+    margin: 2px !important;
+  }
+  .flatpickr-day.selected, .flatpickr-day.selected:hover {
+    background: #E11D48 !important;
+    border-color: #E11D48 !important;
+    color: white !important;
+  }
+  .flatpickr-day:hover {
+    background: #fce7f3 !important;
+    border-color: #fce7f3 !important;
+  }
+  .flatpickr-day.today {
+    border-color: #E11D48 !important;
+  }
+  .flatpickr-day.today:hover {
+    background: #fce7f3 !important;
+  }
+  .flatpickr-time {
+    border-top: 1px solid #e5e7eb !important;
+    margin-top: 4px !important;
+    padding-top: 8px !important;
+  }
+  .flatpickr-time input {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+  }
+  .flatpickr-time .flatpickr-am-pm {
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    border-radius: 8px !important;
+  }
+  .flatpickr-time .flatpickr-am-pm:hover {
+    background: #fce7f3 !important;
+  }
+  .numInputWrapper:hover {
+    background: #fce7f3 !important;
+    border-radius: 8px !important;
+  }
+  .flatpickr-monthDropdown-months {
+    font-weight: 600 !important;
+  }
+  .dt-picker {
+    background-color: white !important;
+    min-height: 44px;
+  }
+  .dt-picker:focus, .dt-picker.active {
+    border-color: #E11D48 !important;
+    box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.1) !important;
+  }
 `;
-document.head.appendChild(style);
+document.head.appendChild(fpStyle);
 
 // Dynamic State Dropdown based on Nationality
 const stateData = {
