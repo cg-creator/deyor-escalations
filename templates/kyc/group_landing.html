@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Complete Your KYC - {{ group.trip_name or 'Deyor Trip' }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+  <div class="container mx-auto px-4 max-w-xl">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-rose-100 to-rose-200 rounded-2xl mb-4 shadow-md">
+        <svg class="w-8 h-8 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900 mb-1">Group KYC</h1>
+      <p class="text-gray-600">Complete your travel documentation for this trip</p>
+    </div>
+
+    <!-- Trip Info Card -->
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden mb-6">
+      <div class="bg-gradient-to-r from-rose-50 to-pink-50 px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-bold text-gray-900">Trip Details</h2>
+      </div>
+      <div class="p-6">
+        <div class="grid grid-cols-2 gap-4 text-sm">
+          {% if group.trip_name %}
+          <div>
+            <p class="text-gray-500 text-xs mb-0.5">Trip</p>
+            <p class="font-semibold text-gray-900">{{ group.trip_name }}</p>
+          </div>
+          {% endif %}
+          <div>
+            <p class="text-gray-500 text-xs mb-0.5">Type</p>
+            <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ 'bg-blue-100 text-blue-800' if group.trip_type == 'international' else 'bg-green-100 text-green-800' }}">
+              {{ group.trip_type | title }}
+            </span>
+          </div>
+          {% if group.trip_date %}
+          <div>
+            <p class="text-gray-500 text-xs mb-0.5">Trip Date</p>
+            <p class="font-semibold text-gray-900">{{ group.trip_date.strftime('%d-%m-%Y') }}</p>
+          </div>
+          {% endif %}
+          {% if group.booking_id %}
+          <div>
+            <p class="text-gray-500 text-xs mb-0.5">Booking ID</p>
+            <p class="font-semibold text-gray-900">{{ group.booking_id }}</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Group Progress -->
+    {% if members %}
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden mb-6">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold text-gray-900">Group Members</h3>
+          <span class="text-xs text-gray-500">{{ members | length }}{% if group.pax > 1 %} / {{ group.pax }}{% endif %} registered</span>
+        </div>
+      </div>
+      <div class="divide-y divide-gray-100">
+        {% for m in members %}
+        <div class="px-6 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="h-8 w-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-medium text-xs flex-shrink-0">
+              {{ m.name[0] | upper }}
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-900">{{ m.name }}</p>
+              <p class="text-xs text-gray-500">{{ m.phone }}</p>
+            </div>
+          </div>
+          <div class="flex gap-1.5">
+            {% if m.kyc_submitted %}
+            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">KYC</span>
+            {% else %}
+            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">KYC</span>
+            {% endif %}
+            {% if m.indemnity_signed %}
+            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">T&C</span>
+            {% else %}
+            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">T&C</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Registration Form -->
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+      <div class="bg-gradient-to-r from-rose-50 to-pink-50 px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-bold text-gray-900">Start Your KYC</h2>
+        <p class="text-sm text-gray-600 mt-0.5">Enter your details to begin the verification process</p>
+      </div>
+      <form action="{{ url_for('kyc_group_landing', token=group.token) }}" method="POST" class="p-6 space-y-4">
+        {% if error_msg %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{{ error_msg }}</div>
+        {% endif %}
+        <div>
+          <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Full Name <span class="text-red-500">*</span></label>
+          <input type="text" name="name" id="name" required placeholder="Enter your full name"
+                 class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5">
+        </div>
+        <div>
+          <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number <span class="text-red-500">*</span></label>
+          <input type="tel" name="phone" id="phone" required placeholder="Enter your phone number"
+                 class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5">
+        </div>
+        <div>
+          <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-gray-400 font-normal">(optional)</span></label>
+          <input type="email" name="email" id="email" placeholder="Enter your email (optional)"
+                 class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5">
+        </div>
+        <button type="submit" class="w-full py-3 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-semibold rounded-xl shadow-lg shadow-rose-200 transition-all">
+          Start My KYC
+        </button>
+      </form>
+    </div>
+
+    <p class="text-center text-xs text-gray-400 mt-6">Powered by Deyor Escalations</p>
+  </div>
+</div>
+{% endblock %}

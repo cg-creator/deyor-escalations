@@ -180,6 +180,7 @@ class KYCCustomer(db.Model):
     deleted_at = db.Column(db.DateTime, nullable=True)  # Soft delete
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    group_link_id = db.Column(db.Integer, db.ForeignKey('kyc_group_links.id'), nullable=True)
     
     # KYC completion tracking
     kyc_submitted = db.Column(db.Boolean, default=False, nullable=False)
@@ -226,6 +227,32 @@ class KYCCustomer(db.Model):
         if days is None:
             return False
         return days <= 7 and (not self.kyc_submitted or not self.indemnity_signed)
+
+
+class KYCGroupLink(db.Model):
+    __tablename__ = 'kyc_group_links'
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(64), unique=True, nullable=False)
+    booking_id = db.Column(db.String(80))
+    trip_name = db.Column(db.String(200))
+    trip_type = db.Column(db.String(20), nullable=False, default='domestic')
+    trip_date = db.Column(db.Date)
+    requires_dl = db.Column(db.Boolean, default=True, nullable=False)
+    pax = db.Column(db.Integer, nullable=False, default=1)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    created_by = db.relationship('User', foreign_keys=[created_by_id], lazy=True)
+    members = db.relationship('KYCCustomer', backref='group_link', lazy=True,
+                              foreign_keys='KYCCustomer.group_link_id')
+
+    def completed_count(self):
+        """Return number of members who have completed both KYC + indemnity."""
+        return sum(1 for m in self.members if m.kyc_submitted and m.indemnity_signed)
+
+    def kyc_done_count(self):
+        """Return number of members who completed KYC form."""
+        return sum(1 for m in self.members if m.kyc_submitted)
 
 
 class KYCForm(db.Model):
@@ -353,6 +380,22 @@ def ensure_schema():
                     conn.execute(text("ALTER TABLE indemnity_templates ADD COLUMN IF NOT EXISTS terms_pdf_path VARCHAR(255)"))
                     conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP"))
                     conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN IF NOT EXISTS terms_accepted_location VARCHAR(100)"))
+                    # Group KYC links table
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS kyc_group_links (
+                            id SERIAL PRIMARY KEY,
+                            token VARCHAR(64) UNIQUE NOT NULL,
+                            booking_id VARCHAR(80),
+                            trip_name VARCHAR(200),
+                            trip_type VARCHAR(20) NOT NULL DEFAULT 'domestic',
+                            trip_date DATE,
+                            requires_dl BOOLEAN NOT NULL DEFAULT TRUE,
+                            pax INTEGER NOT NULL DEFAULT 1,
+                            created_by_id INTEGER NOT NULL REFERENCES users(id),
+                            created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+                        )
+                    """))
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS group_link_id INTEGER REFERENCES kyc_group_links(id)"))
                     # Helpful indexes
                     conn.execute(text("""
                         CREATE INDEX IF NOT EXISTS idx_notifications_user_created
@@ -434,6 +477,12 @@ def ensure_schema():
                 conn.execute(text("ALTER TABLE indemnity_requests ADD COLUMN terms_accepted_location VARCHAR(100)"))
                 conn.commit()
                 print("[info] Added terms_accepted_location column to indemnity_requests table")
+            
+            # Add group_link_id to kyc_customers for group KYC links
+            if 'group_link_id' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN group_link_id INTEGER"))
+                conn.commit()
+                print("[info] Added group_link_id column to kyc_customers table")
     except Exception as e:
         print(f"[warn] ensure_schema failed: {e}")
 
@@ -2069,7 +2118,7 @@ def kyc_customers_export():
 
     headers = [
         "Name", "Email", "Phone", "Trip Name", "Trip Type", "Trip Date",
-        "Booking ID", "KYC Status", "KYC Submitted At",
+        "Booking ID", "Pax", "Group Link", "KYC Status", "KYC Submitted At",
         "Indemnity Status", "Indemnity Signed At", "Created At"
     ]
     # Also include KYC form data columns dynamically
@@ -2107,6 +2156,8 @@ def kyc_customers_export():
             c.trip_type.title() if c.trip_type else '',
             c.trip_date.strftime('%d-%m-%Y') if c.trip_date else '',
             c.booking_id or '',
+            c.group_link.pax if c.group_link else 1,
+            url_for('kyc_group_landing', token=c.group_link.token, _external=True) if c.group_link else '',
             'Completed' if c.kyc_submitted else 'Pending',
             c.kyc_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.kyc_submitted_at else '',
             'Signed' if c.indemnity_signed else 'Pending',
@@ -2162,6 +2213,11 @@ def kyc_customer_new():
         trip_date_str = request.form.get('trip_date', '').strip()
         booking_id = request.form.get('booking_id', '').strip()
         requires_dl = request.form.get('requires_dl') == 'on'
+        pax_str = request.form.get('pax', '1').strip()
+        try:
+            pax = max(1, int(pax_str)) if pax_str else 1
+        except ValueError:
+            pax = 1
         
         if not name or not email or not phone:
             flash('Name, email and phone are required.', 'danger')
@@ -2176,6 +2232,23 @@ def kyc_customer_new():
                 flash('Invalid trip date format. Please use DD-MM-YYYY.', 'danger')
                 return redirect(url_for('kyc_customer_new'))
         
+        # Create group link if pax > 1
+        group_link_id = None
+        if pax > 1:
+            group = KYCGroupLink(
+                token=generate_token(),
+                booking_id=booking_id or None,
+                trip_name=trip_name or None,
+                trip_type=trip_type,
+                trip_date=trip_date,
+                requires_dl=requires_dl,
+                pax=pax,
+                created_by_id=current_user.id
+            )
+            db.session.add(group)
+            db.session.flush()
+            group_link_id = group.id
+        
         customer = KYCCustomer(
             name=name,
             email=email,
@@ -2186,6 +2259,7 @@ def kyc_customer_new():
             booking_id=booking_id,
             requires_dl=requires_dl,
             created_by_id=current_user.id,
+            group_link_id=group_link_id,
             kyc_token=generate_token(),
             indemnity_token=generate_token()
         )
@@ -2240,6 +2314,11 @@ def kyc_customers_bulk():
                     booking_id = row.get('booking_id', '').strip()
                     requires_dl_str = row.get('requires_dl', 'yes').strip().lower()
                     requires_dl = requires_dl_str not in ('no', 'false', '0', 'n')
+                    pax_str = row.get('pax', '1').strip()
+                    try:
+                        pax = max(1, int(pax_str)) if pax_str else 1
+                    except ValueError:
+                        pax = 1
                     
                     if not name or not email or not phone:
                         errors.append(f"Missing required fields for row: {row}")
@@ -2254,16 +2333,36 @@ def kyc_customers_bulk():
                             errors.append(f"Invalid trip date for {name}: {trip_date_str}. Use DD-MM-YYYY format.")
                             continue
                     
+                    safe_trip_type = trip_type if trip_type in ['domestic', 'international'] else 'domestic'
+                    
+                    # Create group link if pax > 1
+                    group_link_id = None
+                    if pax > 1:
+                        group = KYCGroupLink(
+                            token=generate_token(),
+                            booking_id=booking_id or None,
+                            trip_name=trip_name or None,
+                            trip_type=safe_trip_type,
+                            trip_date=trip_date,
+                            requires_dl=requires_dl,
+                            pax=pax,
+                            created_by_id=current_user.id
+                        )
+                        db.session.add(group)
+                        db.session.flush()  # get group.id before creating customer
+                        group_link_id = group.id
+                    
                     customer = KYCCustomer(
                         name=name,
                         email=email,
                         phone=phone,
-                        trip_type=trip_type if trip_type in ['domestic', 'international'] else 'domestic',
+                        trip_type=safe_trip_type,
                         trip_name=trip_name or None,
                         trip_date=trip_date,
                         booking_id=booking_id,
                         requires_dl=requires_dl,
                         created_by_id=current_user.id,
+                        group_link_id=group_link_id,
                         kyc_token=generate_token(),
                         indemnity_token=generate_token()
                     )
@@ -2467,7 +2566,24 @@ Please complete the following steps:
    {indemnity_url}
 
 Both steps are mandatory and must be completed within 7 days before your trip.
+"""
 
+    # Add group link section if this customer is part of a group
+    if customer.group_link_id:
+        group = KYCGroupLink.query.get(customer.group_link_id)
+        if group and group.pax > 1:
+            group_url = url_for('kyc_group_landing', token=group.token, _external=True)
+            body += f"""
+👥 TRAVELLING WITH FRIENDS / FAMILY?
+You have {group.pax} travellers in your booking. Each person MUST complete their own KYC and sign the indemnity form individually.
+
+Please share this link with your co-travellers:
+   {group_url}
+
+They can register themselves and fill their KYC through this link.
+"""
+
+    body += """
 If you have any questions or need assistance, please contact our support team:
 📧 care@deyor.in
 📞 +91 9870417123
@@ -2691,6 +2807,61 @@ def kyc_form_builder_save():
 
 # ==================== EXTERNAL CUSTOMER-FACING ROUTES ====================
 
+@app.route('/kyc/group/<token>', methods=['GET', 'POST'])
+def kyc_group_landing(token):
+    """Public group landing page — friends register themselves to complete KYC."""
+    import json as _json
+    group = KYCGroupLink.query.filter_by(token=token).first_or_404()
+
+    # Existing members
+    members = KYCCustomer.query.filter_by(group_link_id=group.id).filter(
+        KYCCustomer.deleted_at.is_(None)
+    ).order_by(KYCCustomer.created_at.asc()).all()
+
+    error_msg = None
+
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        phone = request.form.get('phone', '').strip()
+
+        if not name or not phone:
+            error_msg = 'Name and phone number are required.'
+        else:
+            # Check for duplicate within same group (name + phone combo)
+            dup = KYCCustomer.query.filter_by(
+                group_link_id=group.id, phone=phone
+            ).filter(KYCCustomer.deleted_at.is_(None)).first()
+            if dup:
+                # Already registered — redirect them straight to their KYC form
+                return redirect(url_for('kyc_external_form', token=dup.kyc_token))
+
+            # Create new KYCCustomer linked to this group
+            customer = KYCCustomer(
+                name=name,
+                email=email or f'{phone}@group.kyc',
+                phone=phone,
+                trip_type=group.trip_type,
+                trip_name=group.trip_name,
+                trip_date=group.trip_date,
+                booking_id=group.booking_id,
+                requires_dl=group.requires_dl,
+                created_by_id=group.created_by_id,
+                group_link_id=group.id,
+                kyc_token=generate_token(),
+                indemnity_token=generate_token()
+            )
+            db.session.add(customer)
+            db.session.commit()
+
+            # Redirect to their individual KYC form
+            return redirect(url_for('kyc_external_form', token=customer.kyc_token))
+
+    return render_template('kyc/group_landing.html',
+                         group=group, members=members, error_msg=error_msg,
+                         hide_nav=True)
+
+
 @app.route('/kyc/external/<token>', methods=['GET', 'POST'])
 def kyc_external_form(token):
     """External KYC form for customers to fill."""
@@ -2726,6 +2897,7 @@ def kyc_external_form(token):
             'full_name': request.form.get('full_name', '').strip(),
             'gender': request.form.get('gender', '').strip(),
             'age': request.form.get('age', '').strip(),
+            'blood_group': request.form.get('blood_group', '').strip(),
             'phone': request.form.get('phone', '').strip(),
             'email': request.form.get('email', '').strip(),
             'nationality': request.form.get('nationality', '').strip(),

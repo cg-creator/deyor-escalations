@@ -114,6 +114,76 @@
     </div>
   </div>
 
+  {% if customer.group_link %}
+  <!-- Group Members Section -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+    <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white flex items-center justify-between">
+      <h3 class="text-lg font-bold text-gray-900 flex items-center">
+        <svg class="w-5 h-5 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+        </svg>
+        Group Members ({{ customer.group_link.members | length }}/{{ customer.group_link.pax }} registered, {{ customer.group_link.completed_count() }} fully done)
+      </h3>
+      <button onclick="copyGroupLink()" class="inline-flex items-center px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium rounded-lg transition-colors">
+        <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+        </svg>
+        Copy Group Link
+      </button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">KYC</th>
+            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Indemnity</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for m in customer.group_link.members %}
+          {% if not m.deleted_at %}
+          <tr class="{{ 'bg-indigo-50' if m.id == customer.id else '' }}">
+            <td class="px-4 py-2 font-medium text-gray-900">{{ m.name }}{% if m.id == customer.id %} <span class="text-xs text-indigo-500">(current)</span>{% endif %}</td>
+            <td class="px-4 py-2 text-gray-600">{{ m.phone }}</td>
+            <td class="px-4 py-2 text-center">
+              {% if m.kyc_submitted %}
+              <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Done</span>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">Pending</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 text-center">
+              {% if m.indemnity_signed %}
+              <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Signed</span>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">Pending</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2">
+              {% if m.id != customer.id %}
+              <a href="{{ url_for('kyc_customer_detail', customer_id=m.id) }}" class="text-xs text-indigo-600 hover:underline">View</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+  function copyGroupLink() {
+    const url = '{{ url_for("kyc_group_landing", token=customer.group_link.token, _external=True) }}';
+    navigator.clipboard.writeText(url).then(function() {
+      alert('Group link copied to clipboard!');
+    });
+  }
+  </script>
+  {% endif %}
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
     <!-- Left Column: KYC Form Data -->
     <div class="space-y-6">
