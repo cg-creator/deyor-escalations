@@ -92,7 +92,7 @@
       <button type="submit" class="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors">
         Filter
       </button>
-      <a href="{{ url_for('kyc_customers') }}" class="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors">
+      <a href="{{ url_for('kyc_customers', clear_filters=1) }}" class="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors">
         Clear
       </a>
     </form>
@@ -254,6 +254,53 @@
         </tbody>
       </table>
     </div>
+    {% if pagination and pagination.pages > 1 %}
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-gray-50">
+      <div class="text-xs text-gray-600">
+        Showing <span class="font-semibold text-gray-900">{{ (pagination.page - 1) * pagination.per_page + 1 }}</span>
+        to <span class="font-semibold text-gray-900">{{ (pagination.page - 1) * pagination.per_page + customers|length }}</span>
+        of <span class="font-semibold text-gray-900">{{ pagination.total }}</span> customers
+      </div>
+      <nav class="flex items-center gap-1" aria-label="Pagination">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for('kyc_customers', page=pagination.prev_num, status=current_status, trip_type=current_trip_type, search=search_query, booking_id=booking_id_query, trip_name=trip_name_query) }}"
+           class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
+          <svg class="w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          Prev
+        </a>
+        {% else %}
+        <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed">
+          <svg class="w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          Prev
+        </span>
+        {% endif %}
+        {% for p in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+          {% if p %}
+            {% if p == pagination.page %}
+            <span class="inline-flex items-center justify-center min-w-[2rem] px-2.5 py-1 text-xs font-semibold rounded-lg bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-sm">{{ p }}</span>
+            {% else %}
+            <a href="{{ url_for('kyc_customers', page=p, status=current_status, trip_type=current_trip_type, search=search_query, booking_id=booking_id_query, trip_name=trip_name_query) }}"
+               class="inline-flex items-center justify-center min-w-[2rem] px-2.5 py-1 text-xs font-medium rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">{{ p }}</a>
+            {% endif %}
+          {% else %}
+            <span class="px-1.5 text-xs text-gray-400">…</span>
+          {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+        <a href="{{ url_for('kyc_customers', page=pagination.next_num, status=current_status, trip_type=current_trip_type, search=search_query, booking_id=booking_id_query, trip_name=trip_name_query) }}"
+           class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
+          Next
+          <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </a>
+        {% else %}
+        <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed">
+          Next
+          <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </span>
+        {% endif %}
+      </nav>
+    </div>
+    {% endif %}
   </div>
   {% else %}
   <div class="bg-gray-50 rounded-lg p-8 text-center">

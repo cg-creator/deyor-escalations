@@ -52,14 +52,32 @@
     </div>
 
     <!-- Group Progress -->
-    {% if members %}
+    {% set registered = members | length %}
+    {% set spots_left = group.pax - registered %}
+    {% set pct = (registered / group.pax * 100) if group.pax > 0 else 0 %}
     <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden mb-6">
       <div class="px-6 py-4 border-b border-gray-200">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between mb-2">
           <h3 class="font-semibold text-gray-900">Group Members</h3>
-          <span class="text-xs text-gray-500">{{ members | length }}{% if group.pax > 1 %} / {{ group.pax }}{% endif %} registered</span>
+          <span class="text-xs font-medium {{ 'text-green-600' if is_full else ('text-amber-600' if spots_left == 1 else 'text-gray-500') }}">
+            {{ registered }} / {{ group.pax }} registered
+          </span>
         </div>
+        <!-- Progress bar -->
+        <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+          <div class="h-full rounded-full transition-all duration-500 {{ 'bg-green-500' if is_full else ('bg-amber-500' if spots_left == 1 else 'bg-gradient-to-r from-rose-500 to-pink-500') }}"
+               style="width: {{ pct }}%"></div>
+        </div>
+        {% if is_full %}
+        <p class="text-xs text-green-600 mt-2 flex items-center">
+          <svg class="w-3.5 h-3.5 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+          All spots filled
+        </p>
+        {% elif spots_left == 1 %}
+        <p class="text-xs text-amber-600 mt-2">Hurry — only 1 spot remaining</p>
+        {% endif %}
       </div>
+      {% if members %}
       <div class="divide-y divide-gray-100">
         {% for m in members %}
         <div class="px-6 py-3 flex items-center justify-between">
@@ -87,14 +105,35 @@
         </div>
         {% endfor %}
       </div>
+      {% endif %}
     </div>
-    {% endif %}
 
+    {% if is_full %}
+    <!-- Registration Closed State -->
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+      <div class="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-5 border-b border-gray-200 text-center">
+        <div class="inline-flex items-center justify-center w-12 h-12 bg-white rounded-full shadow-sm mb-3">
+          <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold text-gray-900">Registration Complete</h2>
+        <p class="text-sm text-gray-600 mt-1">All {{ group.pax }} spots have been registered for this group.</p>
+      </div>
+      <div class="p-6 space-y-3 text-sm text-gray-600">
+        {% if error_msg %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{{ error_msg }}</div>
+        {% endif %}
+        <p>If you are one of the registered members and need to return to your KYC form, please use the individual link shared with you, or contact the person who booked this trip.</p>
+        <p class="text-gray-500">Think this is a mistake? Reach out to our support team at <a href="mailto:care@deyor.in" class="text-rose-600 hover:underline font-medium">care@deyor.in</a>.</p>
+      </div>
+    </div>
+    {% else %}
     <!-- Registration Form -->
     <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
       <div class="bg-gradient-to-r from-rose-50 to-pink-50 px-6 py-4 border-b border-gray-200">
         <h2 class="text-lg font-bold text-gray-900">Start Your KYC</h2>
-        <p class="text-sm text-gray-600 mt-0.5">Enter your details to begin the verification process</p>
+        <p class="text-sm text-gray-600 mt-0.5">Enter your details to begin the verification process · {{ spots_left }} spot{{ 's' if spots_left != 1 else '' }} left</p>
       </div>
       <form action="{{ url_for('kyc_group_landing', token=group.token) }}" method="POST" class="p-6 space-y-4">
         {% if error_msg %}
@@ -102,24 +141,34 @@
         {% endif %}
         <div>
           <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Full Name <span class="text-red-500">*</span></label>
-          <input type="text" name="name" id="name" required placeholder="Enter your full name"
+          <input type="text" name="name" id="name" required
+                 value="{{ form_values.name if form_values else '' }}"
+                 placeholder="Enter your full name"
                  class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5">
         </div>
         <div>
           <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number <span class="text-red-500">*</span></label>
-          <input type="tel" name="phone" id="phone" required placeholder="Enter your phone number"
+          <input type="tel" name="phone" id="phone" required
+                 value="{{ form_values.phone if form_values else '' }}"
+                 placeholder="Enter your phone number"
                  class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5">
         </div>
         <div>
-          <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-gray-400 font-normal">(optional)</span></label>
-          <input type="email" name="email" id="email" placeholder="Enter your email (optional)"
+          <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-red-500">*</span></label>
+          <input type="email" name="email" id="email" required
+                 value="{{ form_values.email if form_values else '' }}"
+                 placeholder="Enter your email address"
+                 pattern="^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
+                 title="Please enter a valid email address"
                  class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5">
+          <p class="text-xs text-gray-500 mt-1">We will use this to send you trip updates and KYC confirmation.</p>
         </div>
         <button type="submit" class="w-full py-3 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-semibold rounded-xl shadow-lg shadow-rose-200 transition-all">
           Start My KYC
         </button>
       </form>
     </div>
+    {% endif %}
 
     <p class="text-center text-xs text-gray-400 mt-6">Powered by Deyor Escalations</p>
   </div>

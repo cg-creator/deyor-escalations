@@ -13,7 +13,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # KYC Module Enabled - Deployed March 2026
 
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from sqlalchemy import or_, text, func
@@ -2000,12 +2000,37 @@ def kyc_dashboard():
 @app.route('/kyc/customers')
 @login_required
 def kyc_customers():
-    """List all KYC customers with filtering and search."""
+    """List all KYC customers with filtering, search, pagination, and session-persisted filters."""
+    filter_keys = ('status', 'trip_type', 'search', 'booking_id', 'trip_name')
+
+    # Explicit clear — user pressed the Clear button
+    if request.args.get('clear_filters'):
+        session.pop('kyc_filters', None)
+        return redirect(url_for('kyc_customers'))
+
+    # Bare visits (no filter keys, no page) → restore previously saved filters
+    has_filter_in_url = any(k in request.args for k in filter_keys)
+    if not has_filter_in_url and 'page' not in request.args:
+        stored = session.get('kyc_filters')
+        if stored and any(stored.values()):
+            return redirect(url_for('kyc_customers',
+                                    **{k: v for k, v in stored.items() if v}))
+
     status = request.args.get('status', '')
     trip_type = request.args.get('trip_type', '')
     search_query = request.args.get('search', '').strip()
     booking_id_query = request.args.get('booking_id', '').strip()
     trip_name_query = request.args.get('trip_name', '').strip()
+
+    # Persist current filter state in session whenever filter keys are in URL
+    if has_filter_in_url:
+        session['kyc_filters'] = {
+            'status': status,
+            'trip_type': trip_type,
+            'search': search_query,
+            'booking_id': booking_id_query,
+            'trip_name': trip_name_query,
+        }
     
     if current_user.role == 'admin':
         query = KYCCustomer.query
@@ -2046,9 +2071,21 @@ def kyc_customers():
     if trip_type in ['domestic', 'international']:
         query = query.filter_by(trip_type=trip_type)
     
-    customers = query.order_by(KYCCustomer.created_at.desc()).all()
+    # Pagination
+    try:
+        page = int(request.args.get('page', 1))
+        if page < 1:
+            page = 1
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 10
+    pagination = query.order_by(KYCCustomer.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    customers = pagination.items
     
     return render_template('kyc/customers.html', customers=customers, 
+                         pagination=pagination,
                          current_status=status, current_trip_type=trip_type,
                          search_query=search_query, booking_id_query=booking_id_query,
                          trip_name_query=trip_name_query)
@@ -2819,27 +2856,36 @@ def kyc_group_landing(token):
     ).order_by(KYCCustomer.created_at.asc()).all()
 
     error_msg = None
+    form_values = {'name': '', 'email': '', 'phone': ''}
+    is_full = len(members) >= group.pax
 
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         email = request.form.get('email', '').strip()
         phone = request.form.get('phone', '').strip()
+        form_values = {'name': name, 'email': email, 'phone': phone}
 
-        if not name or not phone:
-            error_msg = 'Name and phone number are required.'
-        else:
-            # Check for duplicate within same group (name + phone combo)
-            dup = KYCCustomer.query.filter_by(
+        # Allow existing members to re-access KYC even when group is full
+        if phone:
+            existing = KYCCustomer.query.filter_by(
                 group_link_id=group.id, phone=phone
             ).filter(KYCCustomer.deleted_at.is_(None)).first()
-            if dup:
-                # Already registered — redirect them straight to their KYC form
-                return redirect(url_for('kyc_external_form', token=dup.kyc_token))
+            if existing:
+                return redirect(url_for('kyc_external_form', token=existing.kyc_token))
 
+        # Capacity check — block new registrations once pax is reached
+        if is_full:
+            error_msg = f'This group is full. All {group.pax} spots have been registered. Please contact the booker or Deyor support if you believe this is a mistake.'
+        # Validation: all fields required
+        elif not name or not phone or not email:
+            error_msg = 'Name, phone number and email are all required.'
+        elif not re.match(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$', email):
+            error_msg = 'Please enter a valid email address.'
+        else:
             # Create new KYCCustomer linked to this group
             customer = KYCCustomer(
                 name=name,
-                email=email or f'{phone}@group.kyc',
+                email=email,
                 phone=phone,
                 trip_type=group.trip_type,
                 trip_name=group.trip_name,
@@ -2859,7 +2905,7 @@ def kyc_group_landing(token):
 
     return render_template('kyc/group_landing.html',
                          group=group, members=members, error_msg=error_msg,
-                         hide_nav=True)
+                         form_values=form_values, is_full=is_full, hide_nav=True)
 
 
 @app.route('/kyc/external/<token>', methods=['GET', 'POST'])
@@ -2917,7 +2963,46 @@ def kyc_external_form(token):
             'departure_mode': request.form.get('departure_mode', '').strip(),
             'departure_date': request.form.get('departure_date', '').strip(),
             'departure_time': request.form.get('departure_time', '').strip(),
+            # Document identification numbers
+            'aadhaar_number': request.form.get('aadhaar_number', '').strip(),
+            'pan_number': request.form.get('pan_number', '').strip().upper(),
+            'dl_number': request.form.get('dl_number', '').strip().upper(),
+            'passport_number': request.form.get('passport_number', '').strip().upper(),
         }
+
+        # Server-side validation for document numbers
+        import re as _re
+        doc_errors = []
+        is_intl = (customer.trip_type == 'international')
+
+        # Aadhaar: always required, 12 digits
+        if not form_data['aadhaar_number']:
+            doc_errors.append('Aadhaar number is required.')
+        elif not _re.match(r'^\d{12}$', form_data['aadhaar_number']):
+            doc_errors.append('Aadhaar number must be exactly 12 digits.')
+
+        # PAN: required for international, optional for domestic; format when provided
+        if is_intl and not form_data['pan_number']:
+            doc_errors.append('PAN number is required for international trips.')
+        if form_data['pan_number'] and not _re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]$', form_data['pan_number']):
+            doc_errors.append('Invalid PAN format. Example: ABCDE1234F')
+
+        # DL: required only if requires_dl
+        if customer.requires_dl:
+            if not form_data['dl_number']:
+                doc_errors.append('Driving License number is required.')
+
+        # Passport: required for international
+        if is_intl:
+            if not form_data['passport_number']:
+                doc_errors.append('Passport number is required for international trips.')
+            elif not _re.match(r'^[A-Z][0-9]{7}$|^[A-Z]{2}[0-9]{7}$', form_data['passport_number']):
+                doc_errors.append('Invalid passport number format. Example: A1234567')
+
+        if doc_errors:
+            for err in doc_errors:
+                flash(err, 'danger')
+            return redirect(url_for('kyc_external_form', token=customer.kyc_token))
         
         # Server-side normalization: handle native mobile date (YYYY-MM-DD) and time (HH:MM) formats
         import re

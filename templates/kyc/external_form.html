@@ -338,6 +338,77 @@
           </div>
         </div>
 
+        <!-- Document Numbers -->
+        <div class="space-y-6 pt-4 border-t border-gray-100">
+          <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-indigo-200">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+            </div>
+            Document Numbers <span class="text-gray-400 text-sm font-normal ml-2">(for verification)</span>
+          </h3>
+          <p class="text-sm text-gray-600 -mt-2">Please enter the identification numbers exactly as they appear on your documents.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label for="aadhaar_number" class="block text-sm font-medium text-gray-700 mb-1.5">
+                Aadhaar Number <span class="text-red-500">*</span>
+              </label>
+              <input type="text" name="aadhaar_number" id="aadhaar_number" required
+                     inputmode="numeric" maxlength="12"
+                     pattern="^\d{12}$"
+                     title="Aadhaar must be exactly 12 digits"
+                     placeholder="12-digit Aadhaar number"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 font-mono tracking-wide">
+              <p class="text-xs text-gray-500 mt-1">Enter 12 digits without spaces or dashes.</p>
+            </div>
+            <div>
+              <label for="pan_number" class="block text-sm font-medium text-gray-700 mb-1.5">
+                PAN Number {% if is_international %}<span class="text-red-500">*</span>{% else %}<span class="text-gray-400 font-normal">(optional)</span>{% endif %}
+              </label>
+              <input type="text" name="pan_number" id="pan_number"
+                     {% if is_international %}required{% endif %}
+                     maxlength="10"
+                     pattern="^[A-Z]{5}[0-9]{4}[A-Z]$"
+                     title="PAN format: 5 letters + 4 digits + 1 letter (e.g., ABCDE1234F)"
+                     placeholder="e.g., ABCDE1234F"
+                     style="text-transform:uppercase"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 font-mono tracking-wide uppercase">
+              <p class="text-xs text-gray-500 mt-1">
+                {% if is_international %}Mandatory for international travel documentation.{% else %}Example: ABCDE1234F{% endif %}
+              </p>
+            </div>
+            {% if customer.requires_dl %}
+            <div>
+              <label for="dl_number" class="block text-sm font-medium text-gray-700 mb-1.5">
+                Driving License Number <span class="text-red-500">*</span>
+              </label>
+              <input type="text" name="dl_number" id="dl_number" required
+                     maxlength="20"
+                     placeholder="e.g., DL1420110012345"
+                     style="text-transform:uppercase"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 font-mono tracking-wide uppercase">
+              <p class="text-xs text-gray-500 mt-1">Enter your DL number without spaces.</p>
+            </div>
+            {% endif %}
+            {% if is_international %}
+            <div>
+              <label for="passport_number" class="block text-sm font-medium text-gray-700 mb-1.5">
+                Passport Number <span class="text-red-500">*</span>
+              </label>
+              <input type="text" name="passport_number" id="passport_number" required
+                     maxlength="12"
+                     pattern="^[A-Z][0-9]{7}$|^[A-Z]{2}[0-9]{7}$"
+                     title="Passport format: 1-2 letters followed by 7 digits (e.g., A1234567)"
+                     placeholder="e.g., A1234567"
+                     style="text-transform:uppercase"
+                     class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 font-mono tracking-wide uppercase">
+              <p class="text-xs text-gray-500 mt-1">Enter your passport number exactly as printed.</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
         <!-- ID Proof Upload -->
         <div class="space-y-6 pt-4 border-t border-gray-100">
           <h3 class="text-lg font-semibold text-gray-900 flex items-center">
