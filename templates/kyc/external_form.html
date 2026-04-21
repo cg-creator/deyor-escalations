@@ -640,11 +640,20 @@
 
         <!-- Submit Button - Airbnb Style -->
         <div class="pt-6 border-t border-gray-100">
-          <button type="submit" class="w-full inline-flex items-center justify-center px-8 py-4 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 transition-all hover:shadow-xl transform hover:-translate-y-0.5 text-lg">
-            Submit KYC
-            <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-            </svg>
+          <button type="submit" id="kyc-submit-btn" class="w-full inline-flex items-center justify-center px-8 py-4 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 transition-all hover:shadow-xl transform hover:-translate-y-0.5 text-lg disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none disabled:hover:shadow-lg">
+            <span id="kyc-submit-label" class="inline-flex items-center">
+              Submit KYC
+              <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+              </svg>
+            </span>
+            <span id="kyc-submit-loading" class="hidden inline-flex items-center">
+              <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
+              Submitting…
+            </span>
           </button>
           <p class="text-center text-sm text-gray-500 mt-4 flex items-center justify-center">
             <svg class="w-4 h-4 mr-1 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -655,6 +664,24 @@
         </div>
       </form>
     </div>
+  </div>
+</div>
+
+<!-- Phase 2: Submission overlay (Airbnb-style). Hidden by default.
+     Shown by JS only; if JS is disabled the native form submit still works. -->
+<div id="kyc-submit-overlay"
+     class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 backdrop-blur-sm"
+     style="opacity:0; transition:opacity 200ms ease-out;"
+     aria-hidden="true" role="dialog" aria-live="polite" aria-label="Submitting KYC">
+  <div class="bg-white rounded-2xl shadow-2xl px-8 py-7 max-w-sm w-[90%] text-center">
+    <div class="flex items-center justify-center mb-4">
+      <svg class="animate-spin h-10 w-10 text-rose-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+      </svg>
+    </div>
+    <h3 class="text-lg font-semibold text-gray-900">Submitting your KYC…</h3>
+    <p class="text-sm text-gray-500 mt-1">Please don't close or refresh this page.</p>
   </div>
 </div>
 
@@ -987,5 +1014,69 @@ if (nationalitySelect && stateSelect) {
     stateSelect.disabled = false;
   }
 }
+
+// ===== Phase 2: Submission overlay + double-submit guard =====
+// IMPORTANT: this listener is attached LAST on #kycForm so it sees whether
+// any earlier handler (file validation, mobile date conversion) called
+// preventDefault(). If so, we abort — no overlay, no button lock. This
+// protects progressive enhancement and never prevents native error flow.
+(function() {
+  var form = document.getElementById('kycForm');
+  var btn = document.getElementById('kyc-submit-btn');
+  var overlay = document.getElementById('kyc-submit-overlay');
+  if (!form || !btn || !overlay) return;
+
+  var submitting = false;
+
+  // Belt-and-braces double-click guard (prevents duplicate KYCSubmission
+  // rows if the user taps twice fast on slow networks).
+  btn.addEventListener('click', function(e) {
+    if (submitting) { e.preventDefault(); return false; }
+  });
+
+  form.addEventListener('submit', function(e) {
+    // Another handler rejected the submission — do nothing.
+    if (e.defaultPrevented) return;
+    if (submitting) { e.preventDefault(); return; }
+    submitting = true;
+
+    // Swap button label to loading state.
+    var label = document.getElementById('kyc-submit-label');
+    var loading = document.getElementById('kyc-submit-loading');
+    if (label) label.classList.add('hidden');
+    if (loading) loading.classList.remove('hidden');
+
+    // Show overlay with a 200ms fade-in (matches spec).
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+    overlay.setAttribute('aria-hidden', 'false');
+    // Next frame to trigger CSS transition.
+    requestAnimationFrame(function() { overlay.style.opacity = '1'; });
+
+    // Set a sessionStorage flag so the indemnity page can render the
+    // "Submitted ✓" success modal on arrival. Best-effort only.
+    try { sessionStorage.setItem('kyc_just_submitted', '1'); } catch (_) {}
+
+    // Disable the button AFTER the browser has accepted this submit
+    // (setting disabled synchronously would abort a native submit).
+    setTimeout(function() { btn.disabled = true; }, 0);
+  });
+
+  // Safety net: if the user hits Back and the page is restored from
+  // bfcache, reset everything so they can submit again.
+  window.addEventListener('pageshow', function(evt) {
+    if (evt.persisted) {
+      submitting = false;
+      btn.disabled = false;
+      overlay.classList.add('hidden');
+      overlay.classList.remove('flex');
+      overlay.style.opacity = '0';
+      var label = document.getElementById('kyc-submit-label');
+      var loading = document.getElementById('kyc-submit-loading');
+      if (label) label.classList.remove('hidden');
+      if (loading) loading.classList.add('hidden');
+    }
+  });
+})();
 </script>
 {% endblock %}

@@ -65,6 +65,73 @@
     </div>
   </div>
 
+  {# Phase 3: NPS summary. Only shown when we have data (keeps empty state clean). #}
+  {% if nps_total and nps_total > 0 %}
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+      <div class="flex items-start gap-5">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0
+                    {% if nps_score >= 50 %}bg-gradient-to-br from-emerald-400 to-teal-500
+                    {% elif nps_score >= 0 %}bg-gradient-to-br from-amber-400 to-orange-500
+                    {% else %}bg-gradient-to-br from-rose-500 to-pink-600{% endif %} shadow-md">
+          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 font-medium">Net Promoter Score</p>
+          <div class="flex items-baseline gap-3">
+            <p class="text-4xl font-bold text-gray-900">{{ nps_score }}</p>
+            <span class="text-sm font-semibold px-2.5 py-0.5 rounded-full
+                         {% if nps_score >= 50 %}bg-emerald-100 text-emerald-700
+                         {% elif nps_score >= 0 %}bg-amber-100 text-amber-700
+                         {% else %}bg-rose-100 text-rose-700{% endif %}">
+              {% if nps_score >= 50 %}Excellent
+              {% elif nps_score >= 0 %}Fair
+              {% else %}Needs attention{% endif %}
+            </span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">Based on {{ nps_total }} response{{ '' if nps_total == 1 else 's' }}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 sm:gap-4 min-w-0 lg:min-w-[360px]">
+        <div class="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100">
+          <p class="text-2xl font-bold text-emerald-700">{{ nps_promoters }}</p>
+          <p class="text-[11px] font-medium text-emerald-700/80 uppercase tracking-wide">Promoters</p>
+        </div>
+        <div class="text-center p-3 rounded-xl bg-amber-50 border border-amber-100">
+          <p class="text-2xl font-bold text-amber-700">{{ nps_passives }}</p>
+          <p class="text-[11px] font-medium text-amber-700/80 uppercase tracking-wide">Passives</p>
+        </div>
+        <div class="text-center p-3 rounded-xl bg-rose-50 border border-rose-100">
+          <p class="text-2xl font-bold text-rose-700">{{ nps_detractors }}</p>
+          <p class="text-[11px] font-medium text-rose-700/80 uppercase tracking-wide">Detractors</p>
+        </div>
+      </div>
+    </div>
+
+    {# Distribution strip: 1..5 bars #}
+    <div class="mt-5 grid grid-cols-5 gap-2">
+      {% set bar_colors = {1: 'bg-rose-500', 2: 'bg-orange-500', 3: 'bg-amber-500', 4: 'bg-emerald-500', 5: 'bg-pink-500'} %}
+      {% for r in [1, 2, 3, 4, 5] %}
+        {% set cnt = nps_distribution.get(r, 0) %}
+        {% set pct = ((cnt / nps_total) * 100) | round(0, 'floor') if nps_total > 0 else 0 %}
+        {% set bar_style = 'height:' ~ pct ~ '%; min-height:' ~ ('2px' if cnt > 0 else '0') ~ ';' %}
+        <div>
+          <div class="w-full h-16 bg-gray-50 rounded-lg overflow-hidden flex items-end border border-gray-100">
+            <div class="w-full {{ bar_colors[r] }} transition-all" style="{{ bar_style }}" aria-hidden="true"></div>
+          </div>
+          <div class="mt-1 text-center">
+            <p class="text-xs font-semibold text-gray-800">{{ r }}★</p>
+            <p class="text-[10px] text-gray-500">{{ cnt }} ({{ pct }}%)</p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Quick Actions -->
   <div class="bg-gradient-to-r from-gray-50 to-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
     <h2 class="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>

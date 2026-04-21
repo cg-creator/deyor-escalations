@@ -60,7 +60,7 @@
   </div>
 
   <!-- Status Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
       <p class="text-sm text-gray-500 mb-1">Trip</p>
       {% if customer.trip_name %}
@@ -111,6 +111,47 @@
         Pending
       </span>
       {% endif %}
+    </div>
+    {# Phase 3: NPS rating card #}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <p class="text-sm text-gray-500 mb-1">Feedback (NPS)</p>
+      {% if customer.nps_rating %}
+        {% set rating_label = {1:'Terrible', 2:'Poor', 3:'Okay', 4:'Good', 5:'Amazing'} %}
+        {% set rating_color = {1:'bg-rose-100 text-rose-700', 2:'bg-orange-100 text-orange-700', 3:'bg-amber-100 text-amber-700', 4:'bg-emerald-100 text-emerald-700', 5:'bg-pink-100 text-pink-700'} %}
+        <div class="flex items-baseline gap-2">
+          <p class="text-2xl font-bold text-gray-900">{{ customer.nps_rating }}/5</p>
+          <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full {{ rating_color[customer.nps_rating] }}">
+            {{ rating_label[customer.nps_rating] }}
+          </span>
+        </div>
+        {% if customer.nps_submitted_at %}
+        <p class="text-xs text-gray-500 mt-1">{{ customer.nps_submitted_at | fmt_ist('%d-%m-%Y %I:%M %p') }}</p>
+        {% endif %}
+        {% if customer.nps_feedback %}
+        <p class="text-xs text-gray-700 mt-2 line-clamp-3" title="{{ customer.nps_feedback }}">"{{ customer.nps_feedback }}"</p>
+        {% endif %}
+      {% else %}
+        <p class="text-sm text-gray-400">Not submitted yet</p>
+        {% if customer.indemnity_signed %}
+        <p class="text-xs text-gray-500 mt-1">
+          <a href="{{ url_for('kyc_feedback', token=customer.indemnity_token) }}" target="_blank" class="text-rose-500 hover:text-rose-600 underline">Feedback link</a>
+        </p>
+        {% endif %}
+      {% endif %}
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <p class="text-sm text-gray-500 mb-1">Previous Trips</p>
+      <div class="flex items-baseline gap-2">
+        <p class="text-2xl font-bold text-gray-900">{{ previous_trip_count }}</p>
+        {% if previous_trip_count == 0 %}
+        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700">First trip</span>
+        {% elif previous_trip_count >= 3 %}
+        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700">Repeat customer</span>
+        {% else %}
+        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-700">Returning</span>
+        {% endif %}
+      </div>
+      <p class="text-xs text-gray-500 mt-1">Matches on email or phone, excludes this trip.</p>
     </div>
   </div>
 

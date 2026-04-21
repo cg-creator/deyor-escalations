@@ -193,6 +193,12 @@ class KYCCustomer(db.Model):
     # Unique tokens for external access
     kyc_token = db.Column(db.String(64), unique=True)
     indemnity_token = db.Column(db.String(64), unique=True)
+
+    # Phase 3: NPS (Net Promoter Score) feedback. All nullable so existing
+    # rows remain untouched. Rating is 1..5 (1 = angry, 5 = love).
+    nps_rating = db.Column(db.Integer)
+    nps_feedback = db.Column(db.Text)
+    nps_submitted_at = db.Column(db.DateTime)
     
     created_by = db.relationship('User', foreign_keys=[created_by_id], lazy=True)
     submission = db.relationship('KYCSubmission', backref='customer', uselist=False, lazy=True)
@@ -227,6 +233,43 @@ class KYCCustomer(db.Model):
         if days is None:
             return False
         return days <= 7 and (not self.kyc_submitted or not self.indemnity_signed)
+
+    def count_previous_trips(self):
+        """Phase 4: Count other (non-deleted) KYC customer records that
+        share this customer's email OR phone, excluding self.
+
+        Strictly read-only — executes a single SELECT COUNT(*) and mutates
+        nothing. Returns 0 safely if both email and phone are missing.
+
+        Matching rules:
+          - Email: case-insensitive, whitespace-trimmed equality.
+          - Phone: whitespace-trimmed equality (numbers are stored as-is
+            and we deliberately do NOT strip formatting so we don't
+            conflate "+91 98…" with "98…"; that would require a data
+            migration we are not doing here).
+          - Soft-deleted customers are excluded.
+        """
+        email = (self.email or '').strip().lower()
+        phone = (self.phone or '').strip()
+        if not email and not phone:
+            return 0
+        conditions = []
+        if email:
+            conditions.append(func.lower(func.trim(KYCCustomer.email)) == email)
+        if phone:
+            conditions.append(func.trim(KYCCustomer.phone) == phone)
+        try:
+            return (
+                KYCCustomer.query
+                .filter(KYCCustomer.id != self.id)
+                .filter(KYCCustomer.deleted_at.is_(None))
+                .filter(or_(*conditions))
+                .count()
+            )
+        except Exception as e:
+            # Never fail a page render over a counter.
+            print(f"[warn] count_previous_trips failed for customer {self.id}: {e}")
+            return 0
 
 
 class KYCGroupLink(db.Model):
@@ -396,6 +439,10 @@ def ensure_schema():
                         )
                     """))
                     conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS group_link_id INTEGER REFERENCES kyc_group_links(id)"))
+                    # Phase 3: NPS feedback columns (additive, nullable).
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS nps_rating INTEGER"))
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS nps_feedback TEXT"))
+                    conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN IF NOT EXISTS nps_submitted_at TIMESTAMP"))
                     # Helpful indexes
                     conn.execute(text("""
                         CREATE INDEX IF NOT EXISTS idx_notifications_user_created
@@ -483,6 +530,20 @@ def ensure_schema():
                 conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN group_link_id INTEGER"))
                 conn.commit()
                 print("[info] Added group_link_id column to kyc_customers table")
+
+            # Phase 3: NPS feedback columns (additive, nullable).
+            if 'nps_rating' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN nps_rating INTEGER"))
+                conn.commit()
+                print("[info] Added nps_rating column to kyc_customers table")
+            if 'nps_feedback' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN nps_feedback TEXT"))
+                conn.commit()
+                print("[info] Added nps_feedback column to kyc_customers table")
+            if 'nps_submitted_at' not in kyc_cols:
+                conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN nps_submitted_at DATETIME"))
+                conn.commit()
+                print("[info] Added nps_submitted_at column to kyc_customers table")
     except Exception as e:
         print(f"[warn] ensure_schema failed: {e}")
 
@@ -1985,6 +2046,33 @@ def kyc_dashboard():
             elif days <= 7 and days >= 0 and (not customer.kyc_submitted or not customer.indemnity_signed):
                 urgent_customers.append(customer)
     
+    # Phase 3: NPS aggregate (read-only).
+    # Scoring rubric for 1..5 scale:
+    #   5         -> Promoter
+    #   4         -> Passive (high)
+    #   3         -> Passive (low)
+    #   1 or 2    -> Detractor
+    # NPS = %promoters - %detractors (range: -100..+100).
+    nps_rated = [c for c in customers if c.nps_rating]
+    nps_total = len(nps_rated)
+    nps_score = None
+    nps_promoters = nps_passives = nps_detractors = 0
+    nps_distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    if nps_total > 0:
+        for c in nps_rated:
+            r = c.nps_rating
+            if r in nps_distribution:
+                nps_distribution[r] += 1
+            if r == 5:
+                nps_promoters += 1
+            elif r in (3, 4):
+                nps_passives += 1
+            elif r in (1, 2):
+                nps_detractors += 1
+        nps_score = round(
+            (nps_promoters / nps_total - nps_detractors / nps_total) * 100
+        )
+
     return render_template('kyc/dashboard.html',
                          customers=customers,
                          total=total,
@@ -1994,7 +2082,13 @@ def kyc_dashboard():
                          pending_indemnity=pending_indemnity,
                          active_template=active_template,
                          urgent_customers=urgent_customers,
-                         critical_customers=critical_customers)
+                         critical_customers=critical_customers,
+                         nps_score=nps_score,
+                         nps_total=nps_total,
+                         nps_promoters=nps_promoters,
+                         nps_passives=nps_passives,
+                         nps_detractors=nps_detractors,
+                         nps_distribution=nps_distribution)
 
 
 @app.route('/kyc/customers')
@@ -2055,7 +2149,18 @@ def kyc_customers():
             query = query.filter(or_(*bid_filters))
     
     if trip_name_query:
-        query = query.filter(KYCCustomer.trip_name.ilike(f'%{trip_name_query}%'))
+        # Phase 5 fix: trip_name is nullable in the DB. A plain `ilike` on a
+        # NULL column evaluates to NULL (not False), which silently drops
+        # rows and, more importantly, has historically confused the search.
+        # Wrap in coalesce() so NULL is treated as '' and is comparable.
+        # Also normalize the input (strip + collapse whitespace). This is a
+        # read-only filter change — no ticket/KYC data is mutated.
+        normalized_trip_name = ' '.join(trip_name_query.split())
+        if normalized_trip_name:
+            like_pattern = f"%{normalized_trip_name}%"
+            query = query.filter(
+                func.coalesce(KYCCustomer.trip_name, '').ilike(like_pattern)
+            )
     
     if status == 'kyc_pending':
         query = query.filter_by(kyc_submitted=False)
@@ -2121,7 +2226,18 @@ def kyc_customers_export():
             bid_filters = [KYCCustomer.booking_id.ilike(f'%{bid}%') for bid in booking_ids]
             query = query.filter(or_(*bid_filters))
     if trip_name_query:
-        query = query.filter(KYCCustomer.trip_name.ilike(f'%{trip_name_query}%'))
+        # Phase 5 fix: trip_name is nullable in the DB. A plain `ilike` on a
+        # NULL column evaluates to NULL (not False), which silently drops
+        # rows and, more importantly, has historically confused the search.
+        # Wrap in coalesce() so NULL is treated as '' and is comparable.
+        # Also normalize the input (strip + collapse whitespace). This is a
+        # read-only filter change — no ticket/KYC data is mutated.
+        normalized_trip_name = ' '.join(trip_name_query.split())
+        if normalized_trip_name:
+            like_pattern = f"%{normalized_trip_name}%"
+            query = query.filter(
+                func.coalesce(KYCCustomer.trip_name, '').ilike(like_pattern)
+            )
     if status == 'kyc_pending':
         query = query.filter_by(kyc_submitted=False)
     elif status == 'kyc_completed':
@@ -2156,8 +2272,40 @@ def kyc_customers_export():
     headers = [
         "Name", "Email", "Phone", "Trip Name", "Trip Type", "Trip Date",
         "Booking ID", "Pax", "Group Link", "KYC Status", "KYC Submitted At",
-        "Indemnity Status", "Indemnity Signed At", "Created At"
+        "Indemnity Status", "Indemnity Signed At", "Previous Trips",
+        "NPS Rating", "NPS Feedback", "NPS Submitted At", "Created At"
     ]
+
+    # Phase 4: build email/phone → customer_id maps ONCE so the "Previous
+    # Trips" column is O(N) total instead of per-row N+1 queries.
+    # Read-only: a single SELECT of id/email/phone for non-deleted rows.
+    from collections import defaultdict
+    email_index = defaultdict(set)
+    phone_index = defaultdict(set)
+    try:
+        all_rows = db.session.query(
+            KYCCustomer.id, KYCCustomer.email, KYCCustomer.phone
+        ).filter(KYCCustomer.deleted_at.is_(None)).all()
+        for cid, cemail, cphone in all_rows:
+            ce = (cemail or '').strip().lower()
+            cp = (cphone or '').strip()
+            if ce:
+                email_index[ce].add(cid)
+            if cp:
+                phone_index[cp].add(cid)
+    except Exception as e:
+        print(f"[warn] previous-trips index build failed: {e}")
+
+    def _previous_trips_for(c):
+        ce = (c.email or '').strip().lower()
+        cp = (c.phone or '').strip()
+        matches = set()
+        if ce:
+            matches |= email_index.get(ce, set())
+        if cp:
+            matches |= phone_index.get(cp, set())
+        matches.discard(c.id)
+        return len(matches)
     # Also include KYC form data columns dynamically
     # Gather all unique form data keys
     all_form_keys = set()
@@ -2199,6 +2347,10 @@ def kyc_customers_export():
             c.kyc_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.kyc_submitted_at else '',
             'Signed' if c.indemnity_signed else 'Pending',
             c.indemnity_signed_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.indemnity_signed_at else '',
+            _previous_trips_for(c),
+            c.nps_rating if c.nps_rating else '',
+            c.nps_feedback or '',
+            c.nps_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.nps_submitted_at else '',
             c.created_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.created_at else '',
         ]
         row_data.extend([fd.get(k, '') for k in form_keys_sorted])
@@ -3094,14 +3246,25 @@ def kyc_external_form(token):
         # Update customer status
         customer.kyc_submitted = True
         customer.kyc_submitted_at = datetime.utcnow()
-        db.session.commit()
-        
-        # Create notifications for KYC completion
+
+        # Commit AND verify the flag actually persisted to the database
+        # before we show the customer a success message or send any
+        # completion notifications. This closes the intermittent bug
+        # where the email was sent but the dashboard still showed pending.
+        ok, err = _commit_and_verify_kyc_status(customer, 'kyc_submitted')
+        if not ok:
+            # Do NOT send success emails / notifications on an unverified write.
+            # The submission row may already be in the DB; that's fine — we
+            # never delete it. The customer simply gets a retry prompt.
+            flash(err or 'We could not save your KYC submission. Please try again.', 'danger')
+            return redirect(url_for('kyc_external_form', token=customer.kyc_token))
+
+        # Only now — after verified persistence — emit notifications.
         try:
             create_kyc_notifications(customer, 'kyc_completed')
         except Exception as e:
             print(f"[warn] Failed to create KYC completion notifications: {e}")
-        
+
         # Redirect to T&Cs/Indemnity signing page
         flash('Your KYC has been submitted successfully! Please proceed to review and sign the Terms & Conditions and Indemnity Agreement.', 'success')
         return redirect(url_for('kyc_external_indemnity', token=customer.indemnity_token))
@@ -3119,6 +3282,12 @@ def kyc_external_indemnity(token):
     customer = KYCCustomer.query.filter_by(indemnity_token=token).first_or_404()
     
     if customer.indemnity_signed:
+        # Phase 3: if they haven't submitted NPS yet, nudge them there so
+        # the feedback loop isn't lost on revisits. This never overwrites
+        # anything — the feedback route is idempotent and gated on
+        # nps_submitted_at.
+        if customer.nps_submitted_at is None:
+            return redirect(url_for('kyc_feedback', token=customer.indemnity_token))
         return render_template('kyc/external_already_complete.html',
                              message='You have already signed the Terms & Conditions and Indemnity Agreement.',
                              hide_nav=True)
@@ -3220,17 +3389,26 @@ def kyc_external_indemnity(token):
         # Update customer status
         customer.indemnity_signed = True
         customer.indemnity_signed_at = datetime.utcnow()
-        db.session.commit()
-        
-        # Create notifications for Indemnity signing
+
+        # Commit AND verify the flag actually persisted before declaring
+        # success. The IndemnityRequest row and signed PDF are preserved
+        # regardless — we only guard the user-visible success path and
+        # admin notifications on verified persistence.
+        ok, err = _commit_and_verify_kyc_status(customer, 'indemnity_signed')
+        if not ok:
+            flash(err or 'We could not save your signature. Please try again.', 'danger')
+            return redirect(url_for('kyc_external_indemnity', token=customer.indemnity_token))
+
+        # Create notifications for Indemnity signing (only after verified commit)
         try:
             create_kyc_notifications(customer, 'indemnity_signed')
         except Exception as e:
             print(f"[warn] Failed to create indemnity signing notifications: {e}")
-        
-        return render_template('kyc/external_success.html',
-                             message='Thank you for signing the Terms & Conditions and Indemnity Agreement.',
-                             hide_nav=True)
+
+        # Phase 3: send the customer to the NPS feedback page. We use a
+        # GET redirect (POST-then-GET) so that refresh/back don't resubmit
+        # the signature and don't retrigger notifications.
+        return redirect(url_for('kyc_feedback', token=customer.indemnity_token))
     
     # For GET request, process indemnity PDF with placeholder replacement
     processed_pdf_path = None
@@ -3242,6 +3420,52 @@ def kyc_external_indemnity(token):
                          template=template,
                          processed_pdf_path=processed_pdf_path,
                          hide_nav=True)
+
+
+@app.route('/kyc/feedback/<token>', methods=['GET', 'POST'])
+def kyc_feedback(token):
+    """Phase 3: NPS feedback page. Uses indemnity_token as the lookup key
+    because it's the token already embedded in the indemnity flow email.
+    Idempotent: once submitted, revisits show a thank-you state and the
+    POST handler is a no-op (never overwrites an existing rating)."""
+    customer = KYCCustomer.query.filter_by(indemnity_token=token).first_or_404()
+    already = customer.nps_submitted_at is not None
+
+    if request.method == 'POST' and not already:
+        rating_raw = (request.form.get('rating') or '').strip()
+        feedback = (request.form.get('feedback') or '').strip()
+        try:
+            rating = int(rating_raw)
+        except (TypeError, ValueError):
+            rating = 0
+        if rating < 1 or rating > 5:
+            flash('Please select a rating between 1 and 5.', 'danger')
+            return redirect(url_for('kyc_feedback', token=token))
+
+        # Cap feedback length defensively — text column can hold much more
+        # but we don't want abuse. Empty feedback is allowed.
+        customer.nps_rating = rating
+        customer.nps_feedback = feedback[:2000] if feedback else None
+        customer.nps_submitted_at = datetime.utcnow()
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            try:
+                app.logger.error(f"[nps] commit failed for customer {customer.id}: {e}")
+            except Exception:
+                print(f"[nps] commit failed for customer {customer.id}: {e}")
+            flash('We could not save your feedback. Please try again.', 'danger')
+            return redirect(url_for('kyc_feedback', token=token))
+        # PRG: redirect to same page so refresh won't re-POST.
+        return redirect(url_for('kyc_feedback', token=token, submitted=1))
+
+    just_submitted = already or request.args.get('submitted') == '1'
+    return render_template('kyc/external_feedback.html',
+                           customer=customer,
+                           already_submitted=already,
+                           just_submitted=just_submitted,
+                           hide_nav=True)
 
 
 def process_indemnity_pdf(pdf_path, customer):
@@ -3785,13 +4009,17 @@ def kyc_customer_detail(customer_id):
     
     # Get active template for indemnity PDF
     active_template = IndemnityTemplate.query.filter_by(is_active=True).first()
-    
+
+    # Phase 4: previous trip count (read-only, best-effort)
+    previous_trip_count = customer.count_previous_trips()
+
     return render_template('kyc/customer_detail.html',
                          customer=customer,
                          form_data=form_data,
                          document_paths=document_paths,
                          indemnity_request=indemnity_request,
-                         active_template=active_template)
+                         active_template=active_template,
+                         previous_trip_count=previous_trip_count)
 
 
 @app.route('/kyc/settings/email', methods=['GET', 'POST'])
@@ -3938,6 +4166,71 @@ def uploaded_file(filename):
     
     print(f"[UPLOADS] File not found: '{filename}'", file=sys.stderr)
     abort(404)
+
+
+def _commit_and_verify_kyc_status(customer, flag_field):
+    """Commit pending KYC status change and verify it actually persisted.
+
+    This exists because we have observed intermittent cases where the
+    success email is sent but the customer's `kyc_submitted` /
+    `indemnity_signed` flag remains False in the dashboard. The root
+    causes can be: a silently-rolled-back transaction, a stale connection
+    from the pool, or a race where the commit appeared to succeed in
+    memory but did not persist.
+
+    This helper:
+      1. Attempts `db.session.commit()` and rolls back on any exception.
+      2. Forces a fresh read from the database via `session.expire()`
+         so we are not reading the in-memory attribute.
+      3. Returns (True, None) only if the flag is truly True in the DB.
+      4. NEVER deletes or mutates any other row. It only verifies.
+
+    Returns:
+        (success: bool, error_message: str | None)
+    """
+    import sys
+    customer_id = getattr(customer, 'id', None)
+    try:
+        db.session.commit()
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        msg = f"[kyc-commit] DB commit FAILED customer_id={customer_id} flag={flag_field}: {e}"
+        try:
+            app.logger.error(msg)
+        except Exception:
+            print(msg, file=sys.stderr)
+        return False, "We could not save your submission due to a database error. Please try again."
+
+    # Force a fresh read from the database to verify the write persisted.
+    try:
+        db.session.expire(customer)
+        persisted = getattr(customer, flag_field, False)
+    except Exception as e:
+        msg = f"[kyc-commit] Verification read FAILED customer_id={customer_id} flag={flag_field}: {e}"
+        try:
+            app.logger.error(msg)
+        except Exception:
+            print(msg, file=sys.stderr)
+        return False, "We could not confirm your submission was saved. Please try again."
+
+    if not persisted:
+        msg = (f"[kyc-commit] VERIFICATION MISMATCH customer_id={customer_id} "
+               f"flag={flag_field} persisted_value={persisted}")
+        try:
+            app.logger.error(msg)
+        except Exception:
+            print(msg, file=sys.stderr)
+        return False, "Your submission did not save correctly. Please try again."
+
+    info = f"[kyc-commit] VERIFIED customer_id={customer_id} flag={flag_field}=True"
+    try:
+        app.logger.info(info)
+    except Exception:
+        print(info, file=sys.stderr)
+    return True, None
 
 
 def create_kyc_notifications(customer, event_type):

@@ -566,6 +566,53 @@ document.addEventListener('DOMContentLoaded', function() {
       this.classList.remove('flex');
     }
   });
+
+  // ===== Phase 2: "Submitted ✓" interstitial =====
+  // If the KYC form page set this flag on submit, show a brief animated
+  // success tick here (the landing page after submission). Read-only:
+  // immediately clear the flag so refresh won't retrigger it.
+  try {
+    if (sessionStorage.getItem('kyc_just_submitted') === '1') {
+      sessionStorage.removeItem('kyc_just_submitted');
+      var ov = document.getElementById('kyc-success-overlay');
+      if (ov) {
+        ov.classList.remove('hidden');
+        ov.classList.add('flex');
+        requestAnimationFrame(function() { ov.style.opacity = '1'; });
+        // Hold for ~1.2s then fade out.
+        setTimeout(function() {
+          ov.style.opacity = '0';
+          setTimeout(function() {
+            ov.classList.add('hidden');
+            ov.classList.remove('flex');
+          }, 220);
+        }, 1200);
+      }
+    }
+  } catch (_) { /* best-effort */ }
 });
 </script>
+
+<!-- Phase 2: post-submission success interstitial. Hidden by default.
+     Only shown if sessionStorage flag set on the previous page. -->
+<div id="kyc-success-overlay"
+     class="fixed inset-0 z-50 hidden items-center justify-center bg-black/30 backdrop-blur-sm"
+     style="opacity:0; transition:opacity 200ms ease-out;"
+     aria-hidden="true" role="status" aria-live="polite">
+  <div class="bg-white rounded-2xl shadow-2xl px-8 py-7 max-w-sm w-[90%] text-center">
+    <div class="flex items-center justify-center mb-4">
+      <div class="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+        <svg class="w-10 h-10 text-emerald-600 kyc-check-anim" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"
+                pathLength="1" style="stroke-dasharray:1; stroke-dashoffset:1; animation: kycCheckDraw 360ms ease-out forwards 80ms;"/>
+        </svg>
+      </div>
+    </div>
+    <h3 class="text-lg font-semibold text-gray-900">KYC submitted</h3>
+    <p class="text-sm text-gray-500 mt-1">Next: review &amp; sign the Terms and Indemnity.</p>
+  </div>
+</div>
+<style>
+  @keyframes kycCheckDraw { to { stroke-dashoffset: 0; } }
+</style>
 {% endblock %}
