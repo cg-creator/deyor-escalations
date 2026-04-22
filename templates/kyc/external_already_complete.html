@@ -14,7 +14,7 @@
       <h1 class="text-2xl font-bold text-gray-900 mb-2">Already Complete</h1>
       <p class="text-gray-600 mb-6">{{ message }}</p>
       
-      {% if customer and customer.kyc_submitted and not customer.indemnity_signed %}
+      {% if customer and customer.effective_kyc_submitted and not customer.effective_indemnity_signed %}
       <div class="mt-4 mb-6">
         <p class="text-sm text-gray-600 mb-3">You have completed your KYC but still need to sign the Terms & Conditions and Indemnity Agreement.</p>
         <a href="{{ url_for('kyc_external_indemnity', token=customer.indemnity_token) }}" 

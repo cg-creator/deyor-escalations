@@ -199,7 +199,7 @@
               </div>
             </td>
             <td class="px-3 py-2 text-center">
-              {% if customer.kyc_submitted %}
+              {% if customer.effective_kyc_submitted %}
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
                 <svg class="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
                 Done
@@ -211,7 +211,7 @@
               {% endif %}
             </td>
             <td class="px-3 py-2 text-center">
-              {% if customer.indemnity_signed %}
+              {% if customer.effective_indemnity_signed %}
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
                 <svg class="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
                 Signed
@@ -231,7 +231,7 @@
                   </svg>
                   View Details
                 </a>
-                {% if not customer.kyc_submitted or not customer.indemnity_signed %}
+                {% if not customer.effective_kyc_submitted or not customer.effective_indemnity_signed %}
                 <button type="button" onclick="sendEmail({{ customer.id }})" class="w-full inline-flex items-center justify-center px-2.5 py-1 bg-rose-500 hover:bg-rose-600 text-white text-xs font-medium rounded-lg transition-colors">
                     <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>

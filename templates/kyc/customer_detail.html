@@ -23,7 +23,7 @@
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        {% if not customer.kyc_submitted or not customer.indemnity_signed %}
+        {% if not customer.effective_kyc_submitted or not customer.effective_indemnity_signed %}
         <form action="{{ url_for('kyc_customer_send', customer_id=customer.id) }}" method="POST" class="inline">
           <button type="submit" class="inline-flex items-center px-3 sm:px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-medium rounded-lg transition-colors text-sm">
             <svg class="w-4 h-4 mr-1.5 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -59,9 +59,16 @@
     </div>
   </div>
 
-  <!-- Status Cards -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+  {# -------------------------------------------------------------------
+     Status Cards (Phase 6a: balanced 3 × 2 grid).
+     Row 1 = booking context (Trip, Trip Date, Previous Trips)
+     Row 2 = verification & feedback (KYC, Indemnity, NPS)
+     All cards share min-h so uneven content never breaks alignment.
+  -------------------------------------------------------------------- #}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+
+    {# --- Row 1 / Col 1: Trip --- #}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 min-h-[104px]">
       <p class="text-sm text-gray-500 mb-1">Trip</p>
       {% if customer.trip_name %}
       <p class="text-sm font-semibold text-gray-900 mb-1 truncate" title="{{ customer.trip_name }}">{{ customer.trip_name }}</p>
@@ -70,7 +77,9 @@
         {{ customer.trip_type | title }}
       </span>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+
+    {# --- Row 1 / Col 2: Trip Date --- #}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 min-h-[104px]">
       <p class="text-sm text-gray-500 mb-1">Trip Date</p>
       <p class="text-lg font-semibold text-gray-900">
         {% if customer.trip_date %}
@@ -86,9 +95,27 @@
         {% endif %}
       </p>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+
+    {# --- Row 1 / Col 3: Previous Trips --- #}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 min-h-[104px]">
+      <p class="text-sm text-gray-500 mb-1">Previous Trips</p>
+      <div class="flex items-baseline gap-2">
+        <p class="text-2xl font-bold text-gray-900">{{ previous_trip_count }}</p>
+        {% if previous_trip_count == 0 %}
+        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700">First trip</span>
+        {% elif previous_trip_count >= 3 %}
+        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700">Repeat customer</span>
+        {% else %}
+        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-700">Returning</span>
+        {% endif %}
+      </div>
+      <p class="text-xs text-gray-500 mt-1">Matches on email or phone, excludes this trip.</p>
+    </div>
+
+    {# --- Row 2 / Col 1: KYC Status --- #}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 min-h-[104px]">
       <p class="text-sm text-gray-500 mb-1">KYC Status</p>
-      {% if customer.kyc_submitted %}
+      {% if customer.effective_kyc_submitted %}
       <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
         <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
         Completed {{ customer.kyc_submitted_at | fmt_ist('%d-%m-%Y %I:%M %p') if customer.kyc_submitted_at }}
@@ -99,9 +126,11 @@
       </span>
       {% endif %}
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+
+    {# --- Row 2 / Col 2: Indemnity Status --- #}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 min-h-[104px]">
       <p class="text-sm text-gray-500 mb-1">Indemnity Status</p>
-      {% if customer.indemnity_signed %}
+      {% if customer.effective_indemnity_signed %}
       <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
         <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
         Signed {{ customer.indemnity_signed_at | fmt_ist('%d-%m-%Y %I:%M %p') if customer.indemnity_signed_at }}
@@ -112,8 +141,9 @@
       </span>
       {% endif %}
     </div>
-    {# Phase 3: NPS rating card #}
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+
+    {# --- Row 2 / Col 3: NPS Feedback (Phase 3) --- #}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 min-h-[104px]">
       <p class="text-sm text-gray-500 mb-1">Feedback (NPS)</p>
       {% if customer.nps_rating %}
         {% set rating_label = {1:'Terrible', 2:'Poor', 3:'Okay', 4:'Good', 5:'Amazing'} %}
@@ -132,27 +162,14 @@
         {% endif %}
       {% else %}
         <p class="text-sm text-gray-400">Not submitted yet</p>
-        {% if customer.indemnity_signed %}
+        {% if customer.effective_indemnity_signed %}
         <p class="text-xs text-gray-500 mt-1">
           <a href="{{ url_for('kyc_feedback', token=customer.indemnity_token) }}" target="_blank" class="text-rose-500 hover:text-rose-600 underline">Feedback link</a>
         </p>
         {% endif %}
       {% endif %}
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-      <p class="text-sm text-gray-500 mb-1">Previous Trips</p>
-      <div class="flex items-baseline gap-2">
-        <p class="text-2xl font-bold text-gray-900">{{ previous_trip_count }}</p>
-        {% if previous_trip_count == 0 %}
-        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700">First trip</span>
-        {% elif previous_trip_count >= 3 %}
-        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700">Repeat customer</span>
-        {% else %}
-        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 text-indigo-700">Returning</span>
-        {% endif %}
-      </div>
-      <p class="text-xs text-gray-500 mt-1">Matches on email or phone, excludes this trip.</p>
-    </div>
+
   </div>
 
   {% if customer.group_link %}
@@ -190,14 +207,14 @@
             <td class="px-4 py-2 font-medium text-gray-900">{{ m.name }}{% if m.id == customer.id %} <span class="text-xs text-indigo-500">(current)</span>{% endif %}</td>
             <td class="px-4 py-2 text-gray-600">{{ m.phone }}</td>
             <td class="px-4 py-2 text-center">
-              {% if m.kyc_submitted %}
+              {% if m.effective_kyc_submitted %}
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Done</span>
               {% else %}
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">Pending</span>
               {% endif %}
             </td>
             <td class="px-4 py-2 text-center">
-              {% if m.indemnity_signed %}
+              {% if m.effective_indemnity_signed %}
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Signed</span>
               {% else %}
               <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">Pending</span>
@@ -404,13 +421,13 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
             Indemnity Agreement
-            {% if customer.indemnity_signed %}
+            {% if customer.effective_indemnity_signed %}
             <span class="ml-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">SIGNED</span>
             {% endif %}
           </h3>
         </div>
         <div class="p-6">
-          {% if customer.indemnity_signed and indemnity_request and 'pdf:' in indemnity_request.signature_data %}
+          {% if customer.effective_indemnity_signed and indemnity_request and 'pdf:' in indemnity_request.signature_data %}
           <!-- Show signed PDF -->
           {% set pdf_parts = indemnity_request.signature_data.split('pdf:') %}
           {% if pdf_parts|length > 1 %}

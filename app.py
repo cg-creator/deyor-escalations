@@ -16,7 +16,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
-from sqlalchemy import or_, text, func
+from sqlalchemy import or_, and_, text, func
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 )
@@ -202,7 +202,47 @@ class KYCCustomer(db.Model):
     
     created_by = db.relationship('User', foreign_keys=[created_by_id], lazy=True)
     submission = db.relationship('KYCSubmission', backref='customer', uselist=False, lazy=True)
-    
+
+    # ---------------------------------------------------------------
+    # Phase 6c: DERIVED STATUS PROPERTIES (read-only, source-of-truth)
+    # ---------------------------------------------------------------
+    # The denormalised booleans `kyc_submitted` / `indemnity_signed` have
+    # historically drifted from reality (transient MVCC issues, pre-Phase-1
+    # rows, concurrent group-booking submits). These properties return the
+    # OR of the raw flag and the presence of the underlying source row, so
+    # the UI always shows the truth even if the flag hasn't caught up.
+    #
+    # IMPORTANT: these do NOT write anything. A separate one-time backfill
+    # in ensure_schema() heals the raw flags so the database itself is
+    # consistent. Derivation is the belt; backfill is the suspenders.
+    #
+    # Cost model:
+    #   * `effective_kyc_submitted` uses the existing `submission` one-to-one
+    #     relationship → zero extra queries when eager-loaded.
+    #   * `effective_indemnity_signed` uses the `indemnity_requests` backref
+    #     (see IndemnityRequest.customer). In list views we eager-load this
+    #     to avoid N+1; in single-customer views the extra query is trivial.
+    @property
+    def effective_kyc_submitted(self):
+        if self.kyc_submitted:
+            return True
+        # `submission` is a one-to-one backref. Accessing it when lazy-loaded
+        # triggers at most one SELECT; when joinedload'd this is free.
+        try:
+            return self.submission is not None
+        except Exception:
+            return False
+
+    @property
+    def effective_indemnity_signed(self):
+        if self.indemnity_signed:
+            return True
+        try:
+            reqs = getattr(self, 'indemnity_requests', None) or []
+            return any(r.signed_at is not None for r in reqs)
+        except Exception:
+            return False
+
     def get_days_until_trip(self):
         """Calculate days remaining until trip date."""
         if not self.trip_date:
@@ -228,11 +268,15 @@ class KYCCustomer(db.Model):
         return trip_date < today
     
     def needs_urgent_attention(self):
-        """Check if customer needs urgent attention (trip within 7 days and KYC not done)."""
+        """Check if customer needs urgent attention (trip within 7 days and KYC not done).
+        Phase 6c: uses derived status so stuck-flag rows are not mis-flagged
+        as urgent when they have in fact completed KYC/indemnity."""
         days = self.get_days_until_trip()
         if days is None:
             return False
-        return days <= 7 and (not self.kyc_submitted or not self.indemnity_signed)
+        return days <= 7 and (
+            not self.effective_kyc_submitted or not self.effective_indemnity_signed
+        )
 
     def count_previous_trips(self):
         """Phase 4: Count other (non-deleted) KYC customer records that
@@ -290,12 +334,21 @@ class KYCGroupLink(db.Model):
                               foreign_keys='KYCCustomer.group_link_id')
 
     def completed_count(self):
-        """Return number of members who have completed both KYC + indemnity."""
-        return sum(1 for m in self.members if m.kyc_submitted and m.indemnity_signed)
+        """Return number of members who have completed both KYC + indemnity.
+        Phase 6c: uses derived status so stuck-flag rows count correctly."""
+        return sum(
+            1 for m in self.members
+            if (m.deleted_at is None)
+            and m.effective_kyc_submitted
+            and m.effective_indemnity_signed
+        )
 
     def kyc_done_count(self):
-        """Return number of members who completed KYC form."""
-        return sum(1 for m in self.members if m.kyc_submitted)
+        """Return number of members who completed KYC form (derived)."""
+        return sum(
+            1 for m in self.members
+            if (m.deleted_at is None) and m.effective_kyc_submitted
+        )
 
 
 class KYCForm(db.Model):
@@ -365,7 +418,14 @@ class IndemnityRequest(db.Model):
     ip_address = db.Column(db.String(45))
     user_agent = db.Column(db.Text)
     
-    customer = db.relationship('KYCCustomer', foreign_keys=[customer_id], lazy=True)
+    # Phase 6c: add a backref so KYCCustomer.indemnity_requests resolves.
+    # viewonly-style usage — we only read this to compute derived status.
+    customer = db.relationship(
+        'KYCCustomer',
+        foreign_keys=[customer_id],
+        backref=db.backref('indemnity_requests', lazy=True),
+        lazy=True,
+    )
     template = db.relationship('IndemnityTemplate', foreign_keys=[template_id], lazy=True)
     sent_by = db.relationship('User', foreign_keys=[sent_by_id], lazy=True)
 
@@ -544,6 +604,103 @@ def ensure_schema():
                 conn.execute(text("ALTER TABLE kyc_customers ADD COLUMN nps_submitted_at DATETIME"))
                 conn.commit()
                 print("[info] Added nps_submitted_at column to kyc_customers table")
+
+        # -----------------------------------------------------------
+        # Phase 6c: ONE-TIME STATUS BACKFILL (idempotent, heal-only)
+        # -----------------------------------------------------------
+        # Flips `kyc_submitted` / `indemnity_signed` from FALSE -> TRUE when
+        # the underlying source row proves the event happened but the flag
+        # drifted. This can happen due to:
+        #   - transient MVCC lag during Phase 1's commit+verify,
+        #   - pre-Phase-1 historical rows,
+        #   - concurrent group-booking submits,
+        # so the fix is to trust the source row over the boolean.
+        #
+        # Safety guarantees:
+        #   * Only ever sets FALSE -> TRUE. Never the other way. Never
+        #     deletes rows. Never overwrites a non-NULL timestamp.
+        #   * Scoped by `EXISTS (source row)` → cannot heal rows whose
+        #     source data is missing.
+        #   * Idempotent: re-running the same SQL is a no-op because the
+        #     WHERE clause already excludes TRUE rows.
+        #   * Gated by an AppMeta marker so we log the result exactly once.
+        #     On subsequent boots it still executes (that's fine — it's a
+        #     no-op) but won't spam logs.
+        try:
+            _heal_marker = None
+            try:
+                _heal_marker = AppMeta.query.filter_by(key='kyc_status_heal_v1').first()
+            except Exception:
+                # AppMeta may not be queryable yet on brand-new DBs — that's
+                # fine, we'll proceed and try to write the marker at end.
+                _heal_marker = None
+
+            with db.engine.begin() as conn:  # one transaction for both heals
+                kyc_rows = conn.execute(text(
+                    """
+                    UPDATE kyc_customers
+                       SET kyc_submitted = TRUE,
+                           kyc_submitted_at = COALESCE(
+                               kyc_submitted_at,
+                               (SELECT submitted_at FROM kyc_submissions
+                                 WHERE kyc_submissions.customer_id = kyc_customers.id)
+                           )
+                     WHERE kyc_submitted = FALSE
+                       AND EXISTS (SELECT 1 FROM kyc_submissions
+                                    WHERE kyc_submissions.customer_id = kyc_customers.id)
+                    """
+                )).rowcount
+
+                indem_rows = conn.execute(text(
+                    """
+                    UPDATE kyc_customers
+                       SET indemnity_signed = TRUE,
+                           indemnity_signed_at = COALESCE(
+                               indemnity_signed_at,
+                               (SELECT MAX(signed_at) FROM indemnity_requests
+                                 WHERE indemnity_requests.customer_id = kyc_customers.id
+                                   AND signed_at IS NOT NULL)
+                           )
+                     WHERE indemnity_signed = FALSE
+                       AND EXISTS (SELECT 1 FROM indemnity_requests
+                                    WHERE indemnity_requests.customer_id = kyc_customers.id
+                                      AND signed_at IS NOT NULL)
+                    """
+                )).rowcount
+
+            if _heal_marker is None and (kyc_rows or indem_rows):
+                # First-ever run that actually healed something — log + record.
+                print(f"[heal] kyc_status_heal_v1: kyc_submitted healed={kyc_rows}, "
+                      f"indemnity_signed healed={indem_rows}")
+                try:
+                    db.session.add(AppMeta(
+                        key='kyc_status_heal_v1',
+                        value=datetime.utcnow().isoformat()
+                    ))
+                    db.session.commit()
+                except Exception as _e:
+                    db.session.rollback()
+                    print(f"[warn] failed to record kyc_status_heal_v1 marker: {_e}")
+            elif _heal_marker is None:
+                # Nothing to heal on first boot — still drop the marker to
+                # keep future boots quiet.
+                try:
+                    db.session.add(AppMeta(
+                        key='kyc_status_heal_v1',
+                        value=datetime.utcnow().isoformat()
+                    ))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            else:
+                # Marker already exists; only log if the idempotent re-run
+                # still heals rows (which would mean new drift appeared).
+                if kyc_rows or indem_rows:
+                    print(f"[heal] kyc_status_heal_v1 (repeat): "
+                          f"kyc={kyc_rows}, indem={indem_rows}")
+        except Exception as _e:
+            print(f"[warn] Phase 6c heal failed (non-fatal): {_e}")
+
     except Exception as e:
         print(f"[warn] ensure_schema failed: {e}")
 
@@ -2015,42 +2172,50 @@ def save_document_file(file, prefix=''):
 @login_required
 def kyc_dashboard():
     """Main KYC dashboard with overview stats and alerts."""
-    # Get all customers created by current user (or all for admin)
-    if current_user.role == 'admin':
-        customers = KYCCustomer.query.order_by(KYCCustomer.created_at.desc()).all()
-    else:
-        customers = KYCCustomer.query.filter_by(created_by_id=current_user.id).order_by(KYCCustomer.created_at.desc()).all()
-    
-    # Calculate stats
+    # Phase 6c: eager-load source relationships so the dashboard's derived-
+    # status checks + group-link counters cost zero extra queries.
+    from sqlalchemy.orm import joinedload, selectinload
+    base = KYCCustomer.query
+    if current_user.role != 'admin':
+        base = base.filter_by(created_by_id=current_user.id)
+    customers = (
+        base.options(
+            joinedload(KYCCustomer.submission),
+            selectinload(KYCCustomer.indemnity_requests),
+        )
+        .order_by(KYCCustomer.created_at.desc())
+        .all()
+    )
+
+    # Phase 6c: counters read the DERIVED status so stuck-flag customers
+    # don't get miscounted as pending.
     total = len(customers)
-    kyc_completed = sum(1 for c in customers if c.kyc_submitted)
-    indemnity_signed = sum(1 for c in customers if c.indemnity_signed)
+    kyc_completed = sum(1 for c in customers if c.effective_kyc_submitted)
+    indemnity_signed = sum(1 for c in customers if c.effective_indemnity_signed)
     pending_kyc = total - kyc_completed
     pending_indemnity = total - indemnity_signed
-    
+
     # Get active indemnity template
     active_template = IndemnityTemplate.query.filter_by(is_active=True).first()
-    
-    # Generate alerts based on trip dates
+
+    # Generate alerts based on trip dates (also on derived status).
     alerts = []
     urgent_customers = []
     critical_customers = []
-    
+
     for customer in customers:
         days = customer.get_days_until_trip()
         if days is not None:
-            # Critical: Trip started but KYC not done
-            if customer.is_trip_started() and (not customer.kyc_submitted or not customer.indemnity_signed):
+            not_done = (not customer.effective_kyc_submitted) or (not customer.effective_indemnity_signed)
+            if customer.is_trip_started() and not_done:
                 critical_customers.append(customer)
-            # Urgent: Trip within 7 days and KYC not done
-            elif days <= 7 and days >= 0 and (not customer.kyc_submitted or not customer.indemnity_signed):
+            elif days <= 7 and days >= 0 and not_done:
                 urgent_customers.append(customer)
     
-    # Phase 3: NPS aggregate (read-only).
-    # Scoring rubric for 1..5 scale:
-    #   5         -> Promoter
-    #   4         -> Passive (high)
-    #   3         -> Passive (low)
+    # Phase 3 / Phase 6a: NPS aggregate (read-only).
+    # Scoring rubric for 1..5 scale (Phase 6a update):
+    #   4 or 5    -> Promoter
+    #   3         -> Passive
     #   1 or 2    -> Detractor
     # NPS = %promoters - %detractors (range: -100..+100).
     nps_rated = [c for c in customers if c.nps_rating]
@@ -2063,9 +2228,9 @@ def kyc_dashboard():
             r = c.nps_rating
             if r in nps_distribution:
                 nps_distribution[r] += 1
-            if r == 5:
+            if r in (4, 5):
                 nps_promoters += 1
-            elif r in (3, 4):
+            elif r == 3:
                 nps_passives += 1
             elif r in (1, 2):
                 nps_detractors += 1
@@ -2089,6 +2254,67 @@ def kyc_dashboard():
                          nps_passives=nps_passives,
                          nps_detractors=nps_detractors,
                          nps_distribution=nps_distribution)
+
+
+def _apply_trip_name_filter_layered(query, raw):
+    """Phase 6b: layered trip-name matching.
+
+    Strategy:
+      1. Normalize user input (strip + collapse internal whitespace).
+      2. If empty → return query unchanged.
+      3. Build a case-insensitive substring clause against `coalesce(trip_name, '')`
+         (coalesce handles NULL trip_name rows that would otherwise be dropped).
+      4. If the input has <2 tokens, the substring clause *is* the token-AND
+         clause, so we just apply it and return — no extra DB round-trip.
+      5. If the input has 2+ tokens, run a cheap COUNT on the substring
+         match. If it returns 0 rows, fall back to a token-AND clause where
+         every token must appear as a substring in trip_name (handles weird
+         whitespace/invisible chars in stored values, e.g. non-breaking
+         spaces, double-spaces, tabs, or hidden trailing chars that made the
+         original substring miss).
+      6. Otherwise, keep the substring result.
+
+    Safety:
+      * Read-only. Never mutates rows.
+      * COUNT query is bounded (single scalar) and only runs for multi-token
+        searches → no impact on typical single-word filters.
+      * On any DB error during the COUNT, we conservatively fall back to the
+        token-AND path (broader recall) rather than crash the page.
+      * Returns the (possibly-filtered) query back to the caller so pagination
+        and downstream filters (status, trip_type) continue to work unchanged.
+    """
+    normalized = ' '.join((raw or '').split())
+    if not normalized:
+        return query
+    sub_clause = func.coalesce(KYCCustomer.trip_name, '').ilike(f"%{normalized}%")
+    tokens = normalized.split()
+    # Single token: substring is equivalent to token-AND; apply and return.
+    if len(tokens) < 2:
+        return query.filter(sub_clause)
+    # Multi-token: probe substring first. Only pay for token-AND fallback
+    # when substring returns zero rows.
+    try:
+        sub_count = (
+            query.with_entities(func.count(KYCCustomer.id))
+                 .filter(sub_clause)
+                 .scalar()
+        )
+    except Exception as e:
+        try:
+            app.logger.warning(
+                f"[trip-name] substring probe failed, falling back to token-AND: {e}"
+            )
+        except Exception:
+            pass
+        sub_count = 0
+    if sub_count and sub_count > 0:
+        return query.filter(sub_clause)
+    # Fallback: every token must appear as a case-insensitive substring.
+    tokens_clause = and_(*[
+        func.coalesce(KYCCustomer.trip_name, '').ilike(f"%{t}%")
+        for t in tokens
+    ])
+    return query.filter(tokens_clause)
 
 
 @app.route('/kyc/customers')
@@ -2148,31 +2374,37 @@ def kyc_customers():
             bid_filters = [KYCCustomer.booking_id.ilike(f'%{bid}%') for bid in booking_ids]
             query = query.filter(or_(*bid_filters))
     
-    if trip_name_query:
-        # Phase 5 fix: trip_name is nullable in the DB. A plain `ilike` on a
-        # NULL column evaluates to NULL (not False), which silently drops
-        # rows and, more importantly, has historically confused the search.
-        # Wrap in coalesce() so NULL is treated as '' and is comparable.
-        # Also normalize the input (strip + collapse whitespace). This is a
-        # read-only filter change — no ticket/KYC data is mutated.
-        normalized_trip_name = ' '.join(trip_name_query.split())
-        if normalized_trip_name:
-            like_pattern = f"%{normalized_trip_name}%"
-            query = query.filter(
-                func.coalesce(KYCCustomer.trip_name, '').ilike(like_pattern)
-            )
-    
+    # Phase 5 + 6b: layered trip-name filter (substring → token-AND fallback).
+    query = _apply_trip_name_filter_layered(query, trip_name_query)
+
+    # Phase 6c: status filters use the derived truth. A row is "KYC done"
+    # if the flag is True OR a KYCSubmission exists. "Indemnity signed" if
+    # the flag is True OR a signed IndemnityRequest exists. This prevents
+    # the listing from silently hiding customers whose flags drifted.
+    _kyc_done_expr = or_(
+        KYCCustomer.kyc_submitted.is_(True),
+        db.session.query(KYCSubmission.id).filter(
+            KYCSubmission.customer_id == KYCCustomer.id
+        ).exists()
+    )
+    _indem_done_expr = or_(
+        KYCCustomer.indemnity_signed.is_(True),
+        db.session.query(IndemnityRequest.id).filter(
+            IndemnityRequest.customer_id == KYCCustomer.id,
+            IndemnityRequest.signed_at.isnot(None)
+        ).exists()
+    )
     if status == 'kyc_pending':
-        query = query.filter_by(kyc_submitted=False)
+        query = query.filter(~_kyc_done_expr)
     elif status == 'kyc_completed':
-        query = query.filter_by(kyc_submitted=True)
+        query = query.filter(_kyc_done_expr)
     elif status == 'indemnity_pending':
-        query = query.filter_by(indemnity_signed=False)
+        query = query.filter(~_indem_done_expr)
     elif status == 'indemnity_signed':
-        query = query.filter_by(indemnity_signed=True)
+        query = query.filter(_indem_done_expr)
     elif status == 'fully_complete':
-        query = query.filter_by(kyc_submitted=True, indemnity_signed=True)
-    
+        query = query.filter(and_(_kyc_done_expr, _indem_done_expr))
+
     if trip_type in ['domestic', 'international']:
         query = query.filter_by(trip_type=trip_type)
     
@@ -2184,8 +2416,16 @@ def kyc_customers():
     except (TypeError, ValueError):
         page = 1
     per_page = 10
-    pagination = query.order_by(KYCCustomer.created_at.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
+    # Phase 6c: eager-load source rows so the template's effective_* checks
+    # cost zero extra queries even on a full paginated page.
+    from sqlalchemy.orm import joinedload, selectinload
+    pagination = (
+        query.options(
+            joinedload(KYCCustomer.submission),
+            selectinload(KYCCustomer.indemnity_requests),
+        )
+        .order_by(KYCCustomer.created_at.desc())
+        .paginate(page=page, per_page=per_page, error_out=False)
     )
     customers = pagination.items
     
@@ -2225,33 +2465,48 @@ def kyc_customers_export():
         elif len(booking_ids) > 1:
             bid_filters = [KYCCustomer.booking_id.ilike(f'%{bid}%') for bid in booking_ids]
             query = query.filter(or_(*bid_filters))
-    if trip_name_query:
-        # Phase 5 fix: trip_name is nullable in the DB. A plain `ilike` on a
-        # NULL column evaluates to NULL (not False), which silently drops
-        # rows and, more importantly, has historically confused the search.
-        # Wrap in coalesce() so NULL is treated as '' and is comparable.
-        # Also normalize the input (strip + collapse whitespace). This is a
-        # read-only filter change — no ticket/KYC data is mutated.
-        normalized_trip_name = ' '.join(trip_name_query.split())
-        if normalized_trip_name:
-            like_pattern = f"%{normalized_trip_name}%"
-            query = query.filter(
-                func.coalesce(KYCCustomer.trip_name, '').ilike(like_pattern)
-            )
+    # Phase 5 + 6b: layered trip-name filter (substring → token-AND fallback).
+    # Identical to the listing so the Excel export never diverges from screen.
+    query = _apply_trip_name_filter_layered(query, trip_name_query)
+
+    # Phase 6c: derived-status filter, identical semantics to listing.
+    _kyc_done_expr = or_(
+        KYCCustomer.kyc_submitted.is_(True),
+        db.session.query(KYCSubmission.id).filter(
+            KYCSubmission.customer_id == KYCCustomer.id
+        ).exists()
+    )
+    _indem_done_expr = or_(
+        KYCCustomer.indemnity_signed.is_(True),
+        db.session.query(IndemnityRequest.id).filter(
+            IndemnityRequest.customer_id == KYCCustomer.id,
+            IndemnityRequest.signed_at.isnot(None)
+        ).exists()
+    )
     if status == 'kyc_pending':
-        query = query.filter_by(kyc_submitted=False)
+        query = query.filter(~_kyc_done_expr)
     elif status == 'kyc_completed':
-        query = query.filter_by(kyc_submitted=True)
+        query = query.filter(_kyc_done_expr)
     elif status == 'indemnity_pending':
-        query = query.filter_by(indemnity_signed=False)
+        query = query.filter(~_indem_done_expr)
     elif status == 'indemnity_signed':
-        query = query.filter_by(indemnity_signed=True)
+        query = query.filter(_indem_done_expr)
     elif status == 'fully_complete':
-        query = query.filter_by(kyc_submitted=True, indemnity_signed=True)
+        query = query.filter(and_(_kyc_done_expr, _indem_done_expr))
     if trip_type in ['domestic', 'international']:
         query = query.filter_by(trip_type=trip_type)
 
-    customers = query.order_by(KYCCustomer.created_at.desc()).all()
+    # Phase 6c: eager-load the source relationships so the Excel row loop
+    # does not trigger N+1 queries when it reads effective_* properties.
+    from sqlalchemy.orm import joinedload, selectinload
+    customers = (
+        query.options(
+            joinedload(KYCCustomer.submission),
+            selectinload(KYCCustomer.indemnity_requests),
+        )
+        .order_by(KYCCustomer.created_at.desc())
+        .all()
+    )
 
     # Build Excel workbook
     wb = openpyxl.Workbook()
@@ -2343,9 +2598,9 @@ def kyc_customers_export():
             c.booking_id or '',
             c.group_link.pax if c.group_link else 1,
             url_for('kyc_group_landing', token=c.group_link.token, _external=True) if c.group_link else '',
-            'Completed' if c.kyc_submitted else 'Pending',
+            'Completed' if c.effective_kyc_submitted else 'Pending',
             c.kyc_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.kyc_submitted_at else '',
-            'Signed' if c.indemnity_signed else 'Pending',
+            'Signed' if c.effective_indemnity_signed else 'Pending',
             c.indemnity_signed_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.indemnity_signed_at else '',
             _previous_trips_for(c),
             c.nps_rating if c.nps_rating else '',
@@ -3065,9 +3320,13 @@ def kyc_external_form(token):
     """External KYC form for customers to fill."""
     customer = KYCCustomer.query.filter_by(kyc_token=token).first_or_404()
     
-    if customer.kyc_submitted:
-        return render_template('kyc/external_already_complete.html', 
+    # Phase 6c: honour derived status so a customer whose KYC row exists
+    # but whose flag drifted never gets sent through the submission path
+    # a second time (which would hit the UNIQUE constraint on KYCSubmission).
+    if customer.effective_kyc_submitted:
+        return render_template('kyc/external_already_complete.html',
                              message='Your KYC form has already been submitted.',
+                             customer=customer,
                              hide_nav=True)
     
     form = KYCForm.query.filter_by(is_active=True).first()
@@ -3281,7 +3540,10 @@ def kyc_external_indemnity(token):
     """External indemnity signing page."""
     customer = KYCCustomer.query.filter_by(indemnity_token=token).first_or_404()
     
-    if customer.indemnity_signed:
+    # Phase 6c: use derived status so a stuck-flag but source-signed row
+    # doesn't re-enter the sign flow (which could create duplicate
+    # IndemnityRequest rows / regenerate PDFs).
+    if customer.effective_indemnity_signed:
         # Phase 3: if they haven't submitted NPS yet, nudge them there so
         # the feedback loop isn't lost on revisits. This never overwrites
         # anything — the feedback route is idempotent and gated on
@@ -3290,6 +3552,7 @@ def kyc_external_indemnity(token):
             return redirect(url_for('kyc_feedback', token=customer.indemnity_token))
         return render_template('kyc/external_already_complete.html',
                              message='You have already signed the Terms & Conditions and Indemnity Agreement.',
+                             customer=customer,
                              hide_nav=True)
     
     template = IndemnityTemplate.query.filter_by(is_active=True).first()
@@ -4003,10 +4266,28 @@ def kyc_customer_detail(customer_id):
         form_data = json.loads(customer.submission.form_data) if customer.submission.form_data else {}
         document_paths = json.loads(customer.submission.document_paths) if customer.submission.document_paths else {}
     
-    # Get indemnity request details if signed
-    if customer.indemnity_signed:
-        indemnity_request = IndemnityRequest.query.filter_by(customer_id=customer.id).first()
-    
+    # Phase 6c: load the SIGNED indemnity request (if any) using derived
+    # status so stuck-flag customers still see their signed PDF. We pick
+    # the signed row explicitly (a customer may have multiple requests if
+    # the email was resent before signature).
+    if customer.effective_indemnity_signed:
+        indemnity_request = (
+            IndemnityRequest.query
+            .filter_by(customer_id=customer.id)
+            .filter(IndemnityRequest.signed_at.isnot(None))
+            .order_by(IndemnityRequest.signed_at.desc())
+            .first()
+        )
+        # Fallback: no signed row yet visible (rare race) — use latest request
+        # so the template still has a reference to render metadata.
+        if indemnity_request is None:
+            indemnity_request = (
+                IndemnityRequest.query
+                .filter_by(customer_id=customer.id)
+                .order_by(IndemnityRequest.sent_at.desc())
+                .first()
+            )
+
     # Get active template for indemnity PDF
     active_template = IndemnityTemplate.query.filter_by(is_active=True).first()
 
@@ -4204,21 +4485,65 @@ def _commit_and_verify_kyc_status(customer, flag_field):
             print(msg, file=sys.stderr)
         return False, "We could not save your submission due to a database error. Please try again."
 
-    # Force a fresh read from the database to verify the write persisted.
-    try:
-        db.session.expire(customer)
-        persisted = getattr(customer, flag_field, False)
-    except Exception as e:
-        msg = f"[kyc-commit] Verification read FAILED customer_id={customer_id} flag={flag_field}: {e}"
+    # Phase 6c: Force a fresh read with a short retry loop. Postgres MVCC
+    # can occasionally show a stale snapshot on the first read after a
+    # commit when the connection is reused from the pool. Two extra
+    # verification attempts (with a 50 ms sleep) absorb that lag without
+    # degrading the happy-path UX.
+    import time
+    persisted = False
+    last_err = None
+    for attempt in range(3):
         try:
-            app.logger.error(msg)
-        except Exception:
-            print(msg, file=sys.stderr)
-        return False, "We could not confirm your submission was saved. Please try again."
+            db.session.expire(customer)
+            persisted = bool(getattr(customer, flag_field, False))
+            if persisted:
+                break
+        except Exception as e:
+            last_err = e
+            msg = (f"[kyc-commit] Verification read attempt {attempt+1} failed "
+                   f"customer_id={customer_id} flag={flag_field}: {e}")
+            try:
+                app.logger.warning(msg)
+            except Exception:
+                print(msg, file=sys.stderr)
+        # Not the last attempt: small backoff before retrying.
+        if attempt < 2:
+            time.sleep(0.05)
 
     if not persisted:
+        # Final fallback: consult the source-of-truth row directly. If the
+        # source row proves the event happened (KYCSubmission exists for
+        # `kyc_submitted`, or a signed IndemnityRequest for
+        # `indemnity_signed`), we treat the commit as verified. This
+        # eliminates false-negative retries where the flag genuinely was
+        # persisted but the re-read missed it. Still read-only.
+        try:
+            if flag_field == 'kyc_submitted':
+                proof = db.session.query(KYCSubmission.id).filter_by(
+                    customer_id=customer_id
+                ).first() is not None
+            elif flag_field == 'indemnity_signed':
+                proof = db.session.query(IndemnityRequest.id).filter_by(
+                    customer_id=customer_id
+                ).filter(IndemnityRequest.signed_at.isnot(None)).first() is not None
+            else:
+                proof = False
+        except Exception as e:
+            proof = False
+            last_err = e
+
+        if proof:
+            info = (f"[kyc-commit] VERIFIED-BY-SOURCE customer_id={customer_id} "
+                    f"flag={flag_field} (raw flag was stale, source row present)")
+            try:
+                app.logger.info(info)
+            except Exception:
+                print(info, file=sys.stderr)
+            return True, None
+
         msg = (f"[kyc-commit] VERIFICATION MISMATCH customer_id={customer_id} "
-               f"flag={flag_field} persisted_value={persisted}")
+               f"flag={flag_field} persisted_value={persisted} last_err={last_err}")
         try:
             app.logger.error(msg)
         except Exception:

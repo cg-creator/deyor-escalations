@@ -231,8 +231,8 @@
             <p class="font-medium">{{ customer.name }}</p>
             <p class="text-sm text-red-100">Trip Date: {{ customer.trip_date.strftime('%d-%m-%Y') }} (Started)</p>
             <p class="text-xs text-red-200">
-              {% if not customer.kyc_submitted %}❌ KYC Pending{% endif %}
-              {% if not customer.indemnity_signed %}❌ Indemnity Pending{% endif %}
+              {% if not customer.effective_kyc_submitted %}❌ KYC Pending{% endif %}
+              {% if not customer.effective_indemnity_signed %}❌ Indemnity Pending{% endif %}
             </p>
           </div>
         </div>
@@ -268,8 +268,8 @@
             <p class="font-medium">{{ customer.name }}</p>
             <p class="text-sm text-amber-100">Trip in {{ customer.get_days_until_trip() }} days ({{ customer.trip_date.strftime('%d-%m-%Y') }})</p>
             <p class="text-xs text-amber-200">
-              {% if not customer.kyc_submitted %}⏳ KYC Pending{% endif %}
-              {% if not customer.indemnity_signed %}⏳ Indemnity Pending{% endif %}
+              {% if not customer.effective_kyc_submitted %}⏳ KYC Pending{% endif %}
+              {% if not customer.effective_indemnity_signed %}⏳ Indemnity Pending{% endif %}
             </p>
           </div>
         </div>
