@@ -396,10 +396,13 @@
               <label for="passport_number" class="block text-sm font-medium text-gray-700 mb-1.5">
                 Passport Number <span class="text-red-500">*</span>
               </label>
+              {# Passport format validation removed: accepts foreign passports,
+                 OCI/PIO travelers, and all valid Indian passport variants.
+                 Field is still required for international trips (see `required`
+                 attribute) and bounded by maxlength to prevent abuse. #}
               <input type="text" name="passport_number" id="passport_number" required
-                     maxlength="12"
-                     pattern="^[A-Z][0-9]{7}$|^[A-Z]{2}[0-9]{7}$"
-                     title="Passport format: 1-2 letters followed by 7 digits (e.g., A1234567)"
+                     maxlength="20"
+                     title="Enter your passport number as printed on your passport"
                      placeholder="e.g., A1234567"
                      style="text-transform:uppercase"
                      class="block w-full rounded-xl border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 px-4 py-2.5 transition-all hover:border-gray-400 font-mono tracking-wide uppercase">

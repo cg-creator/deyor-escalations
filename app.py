@@ -3403,12 +3403,15 @@ def kyc_external_form(token):
             if not form_data['dl_number']:
                 doc_errors.append('Driving License number is required.')
 
-        # Passport: required for international
+        # Passport: required for international.
+        # Format validation removed (Phase 6d): the previous Indian-only regex
+        # rejected legitimate foreign passports, OCI/PIO travelers, and modern
+        # alphanumeric Indian variants. We now accept any non-empty value
+        # within the input maxlength. The presence check below is sufficient
+        # to ensure the field is filled; downstream ops verify the document.
         if is_intl:
             if not form_data['passport_number']:
                 doc_errors.append('Passport number is required for international trips.')
-            elif not _re.match(r'^[A-Z][0-9]{7}$|^[A-Z]{2}[0-9]{7}$', form_data['passport_number']):
-                doc_errors.append('Invalid passport number format. Example: A1234567')
 
         if doc_errors:
             for err in doc_errors:
