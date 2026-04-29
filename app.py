@@ -3376,7 +3376,9 @@ def kyc_external_form(token):
             'departure_time': request.form.get('departure_time', '').strip(),
             # Document identification numbers
             'aadhaar_number': request.form.get('aadhaar_number', '').strip(),
-            'pan_number': request.form.get('pan_number', '').strip().upper(),
+            # Normalise: strip ALL whitespace (incl. internal/non-breaking) and uppercase,
+            # so values land in the DB clean even though we no longer regex-validate format.
+            'pan_number': re.sub(r'\s+', '', request.form.get('pan_number', '')).upper(),
             'dl_number': request.form.get('dl_number', '').strip().upper(),
             'passport_number': request.form.get('passport_number', '').strip().upper(),
         }
@@ -3392,11 +3394,13 @@ def kyc_external_form(token):
         elif not _re.match(r'^\d{12}$', form_data['aadhaar_number']):
             doc_errors.append('Aadhaar number must be exactly 12 digits.')
 
-        # PAN: required for international, optional for domestic; format when provided
+        # PAN: required for international, optional for domestic.
+        # Format validation removed (Phase 6e): the previous regex combined with
+        # CSS-only uppercase styling silently rejected valid lowercase-typed PANs
+        # via the browser's pattern attribute. Field is presence-checked when
+        # required and normalised (whitespace stripped, uppercased) on input.
         if is_intl and not form_data['pan_number']:
             doc_errors.append('PAN number is required for international trips.')
-        if form_data['pan_number'] and not _re.match(r'^[A-Z]{5}[0-9]{4}[A-Z]$', form_data['pan_number']):
-            doc_errors.append('Invalid PAN format. Example: ABCDE1234F')
 
         # DL: required only if requires_dl
         if customer.requires_dl:
