@@ -224,24 +224,32 @@ class KYCCustomer(db.Model):
     #     to avoid N+1; in single-customer views the extra query is trivial.
     @property
     def effective_kyc_submitted(self):
-        if self.kyc_submitted:
-            return True
-        # `submission` is a one-to-one backref. Accessing it when lazy-loaded
-        # triggers at most one SELECT; when joinedload'd this is free.
+        # Phase 6f: never raise — fall back to the raw flag if the relationship
+        # access blows up (orphaned row, detached session, stale connection).
         try:
+            if self.kyc_submitted:
+                return True
             return self.submission is not None
         except Exception:
-            return False
+            try:
+                return bool(self.kyc_submitted)
+            except Exception:
+                return False
 
     @property
     def effective_indemnity_signed(self):
-        if self.indemnity_signed:
-            return True
+        # Phase 6f: never raise — fall back to the raw flag if the relationship
+        # access blows up (orphaned row, detached session, stale connection).
         try:
+            if self.indemnity_signed:
+                return True
             reqs = getattr(self, 'indemnity_requests', None) or []
             return any(r.signed_at is not None for r in reqs)
         except Exception:
-            return False
+            try:
+                return bool(self.indemnity_signed)
+            except Exception:
+                return False
 
     def get_days_until_trip(self):
         """Calculate days remaining until trip date."""
@@ -872,6 +880,58 @@ login_manager.init_app(app)
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+# ---- Phase 6f: branded 500 handler ----
+# Goal: customers must NEVER see Flask's raw white "Internal Server Error"
+# page. Instead, render `kyc/external_error.html` for the customer-facing
+# routes and a simple branded message elsewhere. The handler also rolls
+# back any half-open DB transaction so the same worker can serve subsequent
+# requests, and logs the full traceback via `app.logger.exception` so that
+# whatever caused the 500 surfaces in Render's stderr stream.
+@app.errorhandler(500)
+@app.errorhandler(Exception)
+def _handle_internal_error(e):
+    # Re-raise HTTPExceptions (404 etc.) so Flask handles them normally.
+    try:
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            return e
+    except Exception:
+        pass
+
+    # Roll back any in-progress transaction to clear stale session state.
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
+
+    # Log full traceback so Render captures it.
+    try:
+        path = request.path if request else '?'
+        method = request.method if request else '?'
+        app.logger.exception(f"[500] {method} {path}")
+    except Exception:
+        pass
+
+    # Customer-facing routes get the branded fallback.
+    try:
+        path = (request.path or '') if request else ''
+        is_customer = path.startswith('/kyc/external/') or path.startswith('/kyc/sign/') \
+            or path.startswith('/kyc/feedback/') or path.startswith('/kyc/group/')
+        if is_customer:
+            return render_template(
+                'kyc/external_error.html',
+                message='We hit a temporary glitch. Please refresh the page, '
+                        'or write to care@deyor.in if it persists.',
+                hide_nav=True,
+            ), 500
+    except Exception:
+        pass
+
+    # Fallback: generic message for staff routes.
+    return ('<h1>Internal Server Error</h1>'
+            '<p>The team has been notified. Please try again in a moment.</p>'), 500
 
 
 # ---- Jinja filter to format datetimes in IST ----
@@ -2899,16 +2959,24 @@ def kyc_customer_send(customer_id):
 @app.route('/kyc/customers/<int:customer_id>/delete', methods=['POST'])
 @login_required
 def kyc_customer_delete(customer_id):
-    """Soft-delete a single KYC customer (admin only)."""
-    if current_user.role != 'admin':
-        flash('Only admins can delete customers.', 'danger')
-        return redirect(url_for('kyc_customers'))
-    
+    """Soft-delete (archive) a single KYC customer.
+
+    Phase 6f: any logged-in user can archive any customer. Restore stays
+    admin-only (kyc_customer_restore). Archived rows are excluded from the
+    listing, dashboard counters, and Critical/Urgent Alert strips.
+    """
     customer = KYCCustomer.query.get_or_404(customer_id)
+    if customer.deleted_at is not None:
+        flash(f'Customer "{customer.name}" is already archived.', 'info')
+        return redirect(url_for('kyc_customers'))
     customer.deleted_at = datetime.utcnow()
     db.session.commit()
-    
-    flash(f'Customer "{customer.name}" archived. It can be restored by an admin.', 'success')
+    try:
+        print(f"[archive] kyc_customer id={customer.id} name={customer.name!r} "
+              f"by user_id={current_user.id} role={current_user.role}")
+    except Exception:
+        pass
+    flash(f'Customer "{customer.name}" archived. An admin can restore it later.', 'success')
     return redirect(url_for('kyc_customers'))
 
 
@@ -2931,11 +2999,10 @@ def kyc_customer_restore(customer_id):
 @app.route('/kyc/customers/bulk-delete', methods=['POST'])
 @login_required
 def kyc_customers_bulk_delete():
-    """Bulk soft-delete KYC customers (admin only)."""
-    if current_user.role != 'admin':
-        flash('Only admins can delete customers.', 'danger')
-        return redirect(url_for('kyc_customers'))
-    
+    """Bulk soft-delete (archive) KYC customers.
+
+    Phase 6f: any logged-in user can archive in bulk. Restore stays admin-only.
+    """
     customer_ids = request.form.getlist('customer_ids')
     if not customer_ids:
         flash('No customers selected for deletion.', 'warning')
@@ -2952,8 +3019,12 @@ def kyc_customers_bulk_delete():
         {KYCCustomer.deleted_at: now}, synchronize_session=False
     )
     db.session.commit()
-    
-    flash(f'{count} customer(s) archived. They can be restored by an admin.', 'success')
+    try:
+        print(f"[archive] kyc_customer bulk count={count} ids={ids} "
+              f"by user_id={current_user.id} role={current_user.role}")
+    except Exception:
+        pass
+    flash(f'{count} customer(s) archived. An admin can restore them later.', 'success')
     return redirect(url_for('kyc_customers'))
 
 
