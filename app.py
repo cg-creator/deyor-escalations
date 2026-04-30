@@ -3493,8 +3493,11 @@ def kyc_external_form(token):
                 flash(err, 'danger')
             return redirect(url_for('kyc_external_form', token=customer.kyc_token))
         
-        # Server-side normalization: handle native mobile date (YYYY-MM-DD) and time (HH:MM) formats
-        import re
+        # Server-side normalization: handle native mobile date (YYYY-MM-DD) and time (HH:MM) formats.
+        # NOTE: do NOT `import re` here. `re` is imported module-level (line 8) and used earlier
+        # in this same function at the pan_number normaliser. A local `import re` would mark `re`
+        # as a function-local for the whole body, causing UnboundLocalError on the earlier use
+        # (Render traceback 2026-04-30 06:53:31).
         for date_key in ('arrival_date', 'departure_date'):
             val = form_data.get(date_key, '')
             if re.match(r'^\d{4}-\d{2}-\d{2}$', val):
