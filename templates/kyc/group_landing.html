@@ -91,12 +91,12 @@
             </div>
           </div>
           <div class="flex gap-1.5">
-            {% if m.kyc_submitted %}
+            {% if m.effective_kyc_submitted %}
             <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">KYC</span>
             {% else %}
             <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">KYC</span>
             {% endif %}
-            {% if m.indemnity_signed %}
+            {% if m.effective_indemnity_signed %}
             <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">T&C</span>
             {% else %}
             <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">T&C</span>
