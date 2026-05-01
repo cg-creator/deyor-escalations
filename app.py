@@ -2499,7 +2499,17 @@ def kyc_customers():
 @app.route('/kyc/customers/export')
 @login_required
 def kyc_customers_export():
-    """Export customers to Excel with current filters applied."""
+    """Export customers to Excel with current filters applied.
+
+    Hardened 2026-05-01: the entire workbook-build phase is wrapped in a
+    try/except that logs the real traceback (so Render logs finally show the
+    root cause of any future failure) and redirects the user back to the
+    listing with a friendly flash — instead of the opaque generic 500 page
+    that caused the booking-ID filter regression to go undiagnosed.
+    Per-row writes go through `_safe_cell_value` which coerces non-scalar /
+    illegal-char values (top suspect for the reported 500: a nested dict in
+    `submission.form_data` failing openpyxl's cell write).
+    """
     import json as _json
     status = request.args.get('status', '')
     trip_type = request.args.get('trip_type', '')
@@ -2568,7 +2578,28 @@ def kyc_customers_export():
         .all()
     )
 
-    # Build Excel workbook
+    # ----- Workbook-build phase: hardened against per-row surprises -----
+    # Coerce any non-scalar / control-char value into a safe Excel cell value.
+    # openpyxl rejects dict/list and certain control chars with
+    # IllegalCharacterError — both realistic for free-form form_data blobs.
+    def _safe_cell_value(v):
+        try:
+            if v is None:
+                return ''
+            if isinstance(v, (str, int, float, bool)):
+                # Strip NUL and other control chars that openpyxl rejects.
+                if isinstance(v, str):
+                    # Keep tab/newline/CR; drop other C0 controls + DEL.
+                    return ''.join(ch for ch in v if ch in ('\t', '\n', '\r') or ord(ch) >= 32)
+                return v
+            # dict/list/tuple/etc. → stringify so the row still exports.
+            return str(v)
+        except Exception:
+            try:
+                return str(v)
+            except Exception:
+                return ''
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "KYC Customers"
@@ -2639,69 +2670,122 @@ def kyc_customers_export():
     headers.extend([k.replace('_', ' ').title() for k in form_keys_sorted])
 
     for col_idx, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell = ws.cell(row=1, column=col_idx, value=_safe_cell_value(header))
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = header_align
         cell.border = thin_border
 
     ist = ZoneInfo('Asia/Kolkata')
+    skipped_rows = 0
     for row_idx, c in enumerate(customers, 2):
-        fd = customer_form_data.get(c.id, {})
-        row_data = [
-            c.name,
-            c.email,
-            c.phone,
-            c.trip_name or '',
-            c.trip_type.title() if c.trip_type else '',
-            c.trip_date.strftime('%d-%m-%Y') if c.trip_date else '',
-            c.booking_id or '',
-            c.group_link.pax if c.group_link else 1,
-            url_for('kyc_group_landing', token=c.group_link.token, _external=True) if c.group_link else '',
-            'Completed' if c.effective_kyc_submitted else 'Pending',
-            c.kyc_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.kyc_submitted_at else '',
-            'Signed' if c.effective_indemnity_signed else 'Pending',
-            c.indemnity_signed_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.indemnity_signed_at else '',
-            _previous_trips_for(c),
-            c.nps_rating if c.nps_rating else '',
-            c.nps_feedback or '',
-            c.nps_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.nps_submitted_at else '',
-            c.created_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.created_at else '',
-        ]
-        row_data.extend([fd.get(k, '') for k in form_keys_sorted])
+        # Per-row guard: a single malformed row (e.g. a legacy trip_date stored
+        # as str, or nested JSON in form_data) must never kill the whole export.
+        try:
+            fd = customer_form_data.get(c.id, {})
+            row_data = [
+                c.name,
+                c.email,
+                c.phone,
+                c.trip_name or '',
+                c.trip_type.title() if c.trip_type else '',
+                c.trip_date.strftime('%d-%m-%Y') if c.trip_date else '',
+                c.booking_id or '',
+                c.group_link.pax if c.group_link else 1,
+                url_for('kyc_group_landing', token=c.group_link.token, _external=True) if c.group_link else '',
+                'Completed' if c.effective_kyc_submitted else 'Pending',
+                c.kyc_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.kyc_submitted_at else '',
+                'Signed' if c.effective_indemnity_signed else 'Pending',
+                c.indemnity_signed_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.indemnity_signed_at else '',
+                _previous_trips_for(c),
+                c.nps_rating if c.nps_rating else '',
+                c.nps_feedback or '',
+                c.nps_submitted_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.nps_submitted_at else '',
+                c.created_at.replace(tzinfo=ZoneInfo('UTC')).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') if c.created_at else '',
+            ]
+            row_data.extend([fd.get(k, '') for k in form_keys_sorted])
 
-        for col_idx, value in enumerate(row_data, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            cell.border = thin_border
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            for col_idx, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=_safe_cell_value(value))
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+        except Exception as _row_err:
+            skipped_rows += 1
+            try:
+                app.logger.exception(
+                    f"[kyc_export] skipped customer id={getattr(c, 'id', '?')}: {_row_err}"
+                )
+            except Exception:
+                pass
+            # Leave the row blank rather than aborting the whole export.
+            continue
 
     # Auto-fit column widths
     for col_idx in range(1, len(headers) + 1):
-        max_len = len(str(ws.cell(row=1, column=col_idx).value or ''))
-        for row_idx in range(2, len(customers) + 2):
-            val = str(ws.cell(row=row_idx, column=col_idx).value or '')
-            if len(val) > max_len:
-                max_len = len(val)
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = min(max_len + 4, 40)
+        try:
+            max_len = len(str(ws.cell(row=1, column=col_idx).value or ''))
+            for row_idx in range(2, len(customers) + 2):
+                val = str(ws.cell(row=row_idx, column=col_idx).value or '')
+                if len(val) > max_len:
+                    max_len = len(val)
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = min(max_len + 4, 40)
+        except Exception:
+            # Width tuning is cosmetic; never let it block the export.
+            continue
 
     # Freeze header row
     ws.freeze_panes = 'A2'
 
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
+    # Serialize + send. Wrap the final I/O steps so any openpyxl save-time
+    # error (rare, but possible with exotic content) is logged with a real
+    # traceback and shown to the user as a friendly message instead of the
+    # opaque generic 500 page.
+    try:
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
 
-    # Filename
-    parts = ['KYC_Customers']
-    if trip_name_query:
-        parts.append(trip_name_query.replace(' ', '_'))
-    if booking_id_query:
-        parts.append('BID_' + booking_id_query.replace(' ', '_').replace(',', '_')[:30])
-    parts.append(datetime.now(ist).strftime('%d%m%Y'))
-    filename = '_'.join(parts) + '.xlsx'
+        parts = ['KYC_Customers']
+        if trip_name_query:
+            parts.append(trip_name_query.replace(' ', '_'))
+        if booking_id_query:
+            parts.append('BID_' + booking_id_query.replace(' ', '_').replace(',', '_')[:30])
+        parts.append(datetime.now(ist).strftime('%d%m%Y'))
+        filename = '_'.join(parts) + '.xlsx'
 
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name=filename)
+        if skipped_rows:
+            try:
+                app.logger.warning(
+                    f"[kyc_export] completed with {skipped_rows} skipped row(s); "
+                    f"filters: status={status!r} trip_type={trip_type!r} "
+                    f"search={search_query!r} booking_id={booking_id_query!r} "
+                    f"trip_name={trip_name_query!r}"
+                )
+            except Exception:
+                pass
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as _save_err:
+        # Log full traceback so Render captures the real cause.
+        try:
+            app.logger.exception(f"[kyc_export] save/send failed: {_save_err}")
+        except Exception:
+            pass
+        try:
+            flash('We could not build the Excel export just now. The team has '
+                  'been notified — please retry in a moment or narrow the filter.',
+                  'danger')
+        except Exception:
+            pass
+        return redirect(url_for('kyc_customers',
+                                status=status, trip_type=trip_type,
+                                search=search_query, booking_id=booking_id_query,
+                                trip_name=trip_name_query))
 
 
 @app.route('/kyc/customers/new', methods=['GET', 'POST'])

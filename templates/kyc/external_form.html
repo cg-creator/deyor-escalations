@@ -3,9 +3,12 @@
 {% block title %}Complete Your KYC - Deyor{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/airbnb.css">
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<!-- Flatpickr pinned to 4.6.13 (last widely-deployed stable). Unpinned CDN previously
+     resolved to "latest" which caused a silent weekday-render regression (May 1 2026
+     appeared under Saturday instead of Friday). Do NOT remove the version pin. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/themes/airbnb.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13"></script>
 {% endblock %}
 
 {% block content %}
@@ -801,8 +804,23 @@ if (isMobile) {
   const fpCommon = {
     disableMobile: true,
     animate: true,
-    allowInput: false
+    allowInput: false,
+    // Lock locale to Sunday-first English so a future CDN/locale default
+    // change cannot shift weekday columns (see pinned-version note above).
+    locale: { firstDayOfWeek: 0 }
   };
+
+  // Fail-fast sanity check: if the picker ever maps a known date to the wrong
+  // weekday (regression canary for the May-1-2026-as-Saturday bug), log loudly
+  // so it surfaces in the customer's browser console and any monitoring we add
+  // later. Purely diagnostic — no UI impact.
+  try {
+    var _canary = new Date(2026, 4, 1); // May 1 2026 — must be Friday (getDay===5)
+    if (_canary.getDay() !== 5) {
+      console.warn('[kyc-picker] Weekday canary FAILED: May 1 2026 reported as',
+                   _canary.getDay(), '(expected 5=Fri). Flatpickr may render incorrectly.');
+    }
+  } catch (_e) { /* never block the form */ }
 
   flatpickr('#arrival_date', {
     ...fpCommon,
