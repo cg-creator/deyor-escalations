@@ -273,6 +273,7 @@
               </div>
               <div>
                 <label for="arrival_date" class="block text-sm font-medium text-gray-700 mb-1.5">Arrival Date <span class="text-red-500">*</span></label>
+                {% if today_label %}<p class="text-xs text-gray-500 mb-1.5">Today: <span class="font-medium text-gray-700">{{ today_label }}</span></p>{% endif %}
                 <div class="relative">
                   <input type="text" name="arrival_date" id="arrival_date" required
                          placeholder="Select date"
@@ -317,6 +318,7 @@
               </div>
               <div>
                 <label for="departure_date" class="block text-sm font-medium text-gray-700 mb-1.5">Departure Date <span class="text-red-500">*</span></label>
+                {% if today_label %}<p class="text-xs text-gray-500 mb-1.5">Today: <span class="font-medium text-gray-700">{{ today_label }}</span></p>{% endif %}
                 <div class="relative">
                   <input type="text" name="departure_date" id="departure_date" required
                          placeholder="Select date"
@@ -759,8 +761,14 @@ document.querySelector('form').addEventListener('submit', function(e) {
   }
 });
 
-// Date/time pickers - native on mobile, Flatpickr on desktop
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+// Date/time pickers - native on real mobile devices, Flatpickr everywhere else.
+// NOTE: we intentionally detect mobile via user-agent ONLY (not window.innerWidth).
+// A narrow desktop browser window was previously falling into the native branch,
+// which showed the browser/OS date picker instead of our pinned Flatpickr — and
+// on some OS locales that native picker rendered weekdays off by one. UA-only
+// detection keeps real phones on native pickers (best UX for touch) and every
+// desktop width on Flatpickr (deterministic rendering).
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 if (isMobile) {
   // Use native date/time pickers on mobile - best UX

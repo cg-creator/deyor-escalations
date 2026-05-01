@@ -2745,13 +2745,23 @@ def kyc_customers_export():
         wb.save(output)
         output.seek(0)
 
+        # Build a filesystem- AND HTTP-header-safe filename. The booking_id
+        # filter can contain newlines (multi-line paste), and Werkzeug rejects
+        # newline characters in the Content-Disposition header
+        # ("Header values must not contain newline characters."). Collapse
+        # anything that isn't alphanumeric/underscore/hyphen to a single
+        # underscore, then trim.
+        def _safe_name_token(s, cap=30):
+            token = re.sub(r'[^A-Za-z0-9_-]+', '_', (s or '')).strip('_')
+            return token[:cap] if cap else token
         parts = ['KYC_Customers']
         if trip_name_query:
-            parts.append(trip_name_query.replace(' ', '_'))
+            parts.append(_safe_name_token(trip_name_query, cap=40))
         if booking_id_query:
-            parts.append('BID_' + booking_id_query.replace(' ', '_').replace(',', '_')[:30])
+            parts.append('BID_' + _safe_name_token(booking_id_query, cap=30))
         parts.append(datetime.now(ist).strftime('%d%m%Y'))
-        filename = '_'.join(parts) + '.xlsx'
+        # Guarantee no stray whitespace/newlines survive into the header.
+        filename = re.sub(r'\s+', '_', '_'.join(p for p in parts if p)) + '.xlsx'
 
         if skipped_rows:
             try:
@@ -3693,10 +3703,17 @@ def kyc_external_form(token):
         flash('Your KYC has been submitted successfully! Please proceed to review and sign the Terms & Conditions and Indemnity Agreement.', 'success')
         return redirect(url_for('kyc_external_indemnity', token=customer.indemnity_token))
     
-    return render_template('kyc/external_form.html', 
-                         customer=customer, 
-                         fields=fields, 
+    # Server-rendered "today" reference (IST) for the date-field helper text.
+    # This is the authoritative weekday shown to the customer so they have an
+    # unambiguous reference even if their browser's date picker (native or JS)
+    # renders unexpectedly.
+    _today_ist = datetime.now(ZoneInfo('Asia/Kolkata'))
+    return render_template('kyc/external_form.html',
+                         customer=customer,
+                         fields=fields,
                          is_international=customer.trip_type == 'international',
+                         today_label=_today_ist.strftime('%A, %d %b %Y'),
+                         today_iso=_today_ist.strftime('%Y-%m-%d'),
                          hide_nav=True)
 
 
